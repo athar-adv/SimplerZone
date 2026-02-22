@@ -2090,7 +2090,7 @@ ZoneScheduler.registerCallbacks({
 })
 
 local defaultGroups = {} do
-	defaultGroups.players = trackGroup({players = Players:GetPlayers()}) do
+	defaultGroups.players = trackGroup({players = Players:GetPlayers()}); do
 		Players.PlayerAdded:Connect(function(player)
 			defaultGroups.players:addItem({player = player})
 		end)
@@ -2098,9 +2098,9 @@ local defaultGroups = {} do
 			defaultGroups.players:removeItem({player = player})
 		end)
 	end
-	defaultGroups.localPlayer = trackGroup({}) do
+	defaultGroups.localPlayer = trackGroup({}); do
 		if RunService:IsClient() then
-			defaultGroups.localPlayer:addItem(Players.LocalPlayer)
+			defaultGroups.localPlayer:addItem({player = Players.LocalPlayer})
 		end
 	end
 end
