@@ -2100,7 +2100,8 @@ local defaultGroups = {} do
 	end
 	defaultGroups.localPlayer = trackGroup({}); do
 		if RunService:IsClient() then
-			defaultGroups.localPlayer:addItem({player = Players.LocalPlayer})
+			local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
+			defaultGroups.localPlayer:addItem({player = LocalPlayer})
 		end
 	end
 end
