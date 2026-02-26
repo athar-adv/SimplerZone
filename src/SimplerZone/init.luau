@@ -5,6 +5,7 @@ debug.setmemorycategory("DEPENDENCY :: SimplerZone")
 
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
 
 local Types = require("@self/Types")
 local Geometry = require("@self/Geometry")
@@ -459,9 +460,9 @@ function Zone:rebuild()
 			table.insert(boxes, box)
 		end
 	end
-
-	self.bvh = Geometry.Bvh.createBVH(boxes)
+	
 	self.boxes = boxes
+	self.bvh = Geometry.Bvh.createBVH(boxes)
 	self.bvhDirty = false
 end
 
@@ -1462,7 +1463,7 @@ local function ZoneListener_checkAndUpdateModel(self: ZoneListener, zone: Zone, 
 		end
 		return
 	end
-
+	
 	local parts = getPartsFromModel(model)
 	for _, part in parts do
 		ZoneListener_checkAndUpdatePart(self, zone, part, model)
@@ -1771,7 +1772,7 @@ local function createShapeInstance(shape: Shape): ShapeInstance
 	}
 end
 
-local function createShape(part: BasePart): Shape
+local function createShape(part: BasePart | Model): Shape
 	if part:IsA("Part") then
 		local shape = part.Shape
 
@@ -1825,18 +1826,29 @@ local function createShape(part: BasePart): Shape
 			size = part.ExtentsSize :: any,
 			vertices = Geometry.Vertices.Wedge(part.ExtentsSize :: any)
 		}
+	elseif part:IsA("Model") then
+		local cframe, size = part:GetBoundingBox()
+		return {
+			ty = "Box",
+			transform = CFrame.identity,
+			size = size :: any
+		}
 	end
 
 	return {
 		ty = "Box",
 		transform = CFrame.identity,
-		size = part.ExtentsSize :: any
+		size = vector.one :: any
 	}
 end
 
-local function shapeInstanceFromPart(part: BasePart): ShapeInstance
+local function shapeInstanceFromPart(part: BasePart | Model): ShapeInstance
 	local shapeInstance = createShapeInstance(createShape(part))
-	shapeInstance.cframe = part.CFrame
+	if part:IsA("BasePart") then
+		shapeInstance.cframe = part.CFrame
+	elseif part:IsA("Model") then
+		shapeInstance.cframe = part:GetBoundingBox()
+	end
 	return shapeInstance
 end
 
@@ -2038,7 +2050,10 @@ function TrackGroup:clear()
 	self:update()
 end
 
-local function trackGroup(items: {parts: {BasePart}?, attachments: {Attachment}?, pvinstances: {PVInstance}?, models: {Model}?, players: {Player}?}): TrackGroup
+type optionalitems = {parts: {BasePart}?, attachments: {Attachment}?, pvinstances: {PVInstance}?, models: {Model}?, players: {Player}?}
+local function TrackGroup_new(items: optionalitems?): TrackGroup
+	local items: optionalitems = items or {}
+	
 	local group = {
 		update = TrackGroup.update,
 		removeFrom = TrackGroup.removeFrom,
@@ -2069,6 +2084,61 @@ local function trackGroup(items: {parts: {BasePart}?, attachments: {Attachment}?
 	return group
 end
 
+local function TrackGroup_forTag(tag: string): (TrackGroup, Types.Disconnector)
+	local items = {
+		parts = {},
+		attachments = {},
+		pvinstances = {},
+		models = {},
+		players = {}
+	}
+	for _, item in CollectionService:GetTagged(tag) do
+		if item:IsA("BasePart") then
+			table.insert(items.parts, item)
+		elseif item:IsA("Attachment") then
+			table.insert(items.attachments, item)
+		elseif item:IsA("Model") then
+			table.insert(items.models, item)
+		elseif item:IsA("Player") then
+			table.insert(items.players, item)
+		elseif item:IsA("PVInstance") then
+			table.insert(items.pvinstances, item)
+		end
+	end
+	local group = TrackGroup_new(items)
+	
+	local onAdded = CollectionService:GetInstanceAddedSignal(tag):Connect(function(item: Instance)
+		if item:IsA("BasePart") then
+			group:addItem({part = item})
+		elseif item:IsA("Attachment") then
+			group:addItem({attachment = item})
+		elseif item:IsA("Model") then
+			group:addItem({model = item})
+		elseif item:IsA("Player") then
+			group:addItem({player = item})
+		elseif item:IsA("PVInstance") then
+			group:addItem({pvinstance = item})
+		end
+	end)
+	local onRemoved = CollectionService:GetInstanceRemovedSignal(tag):Connect(function(item: Instance)
+		if item:IsA("BasePart") then
+			group:removeItem({part = item})
+		elseif item:IsA("Attachment") then
+			group:removeItem({attachment = item})
+		elseif item:IsA("Model") then
+			group:removeItem({model = item})
+		elseif item:IsA("Player") then
+			group:removeItem({player = item})
+		elseif item:IsA("PVInstance") then
+			group:removeItem({pvinstance = item})
+		end
+	end)
+	return group, function()
+		onAdded:Disconnect()
+		onRemoved:Disconnect()
+	end
+end
+
 local function getZonesAtPoint(zones: {Zone}, point: vector): {Zone}
 	local zonesAtPoint = {}
 
@@ -2090,7 +2160,7 @@ ZoneScheduler.registerCallbacks({
 })
 
 local defaultGroups = {} do
-	defaultGroups.players = trackGroup({players = Players:GetPlayers()}) do
+	defaultGroups.players = TrackGroup_new({players = Players:GetPlayers()}); do
 		Players.PlayerAdded:Connect(function(player)
 			defaultGroups.players:addItem({player = player})
 		end)
@@ -2098,9 +2168,10 @@ local defaultGroups = {} do
 			defaultGroups.players:removeItem({player = player})
 		end)
 	end
-	defaultGroups.localPlayer = trackGroup({}) do
+	defaultGroups.localPlayer = TrackGroup_new(); do
 		if RunService:IsClient() then
-			defaultGroups.localPlayer:addItem(Players.LocalPlayer)
+			local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
+			defaultGroups.localPlayer:addItem({player = LocalPlayer})
 		end
 	end
 end
@@ -2166,9 +2237,13 @@ return table.freeze({
 	listener = {
 		new = createListener,
 	},
-	defaultGroups = defaultGroups,
-	
-	trackGroup = trackGroup,
+	trackGroup = {
+		new = TrackGroup_new,
+		forTag = TrackGroup_forTag,
+		
+		players = defaultGroups.players,
+		localPlayer = defaultGroups.localPlayer
+	},
 	getZonesAtPoint = getZonesAtPoint,
 	
 	visualizeBvh = Geometry.Bvh.visualize,

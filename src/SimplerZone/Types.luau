@@ -116,7 +116,7 @@ export type ZoneListener = typeof(setmetatable({}::{
 	subscribe: (ZoneListener, zone: Zone) -> (),
 	unsubscribe: (ZoneListener, zone: Zone) -> (),
 	unsubscribeAll: (ZoneListener) -> (),
-
+	
 	precision: "Part" | "BoundingBox",
 	queryShape: "Point" | "Box",
 	groups: {TrackGroup},
