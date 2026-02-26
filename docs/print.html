@@ -400,6 +400,28 @@ export type ZoneItem = {
 <p>Connects <code>fn</code> to be called when any <code>ZoneItem</code> enters the geometric boundaries of any subscribed <code>Zone</code>, and for the returned function (if any) to be called when it exits it.</p>
 <h3 id="zonelistenersetgroupsgroups-trackgroup---"><a class="header" href="#zonelistenersetgroupsgroups-trackgroup---">ZoneListener:setGroups(groups: {TrackGroup}) -&gt; ()</a></h3>
 <p>Sets the <code>TrackGroup</code>s that this <code>ZoneListener</code> should be listening for.</p>
+<h3 id="zonelisteneriter------zoneitem"><a class="header" href="#zonelisteneriter------zoneitem">ZoneListener:iter() -&gt; () -&gt; ZoneItem</a></h3>
+<p>Iterates through all <code>ZoneItem</code>s that are geometrically inside the <code>Zone</code>s the <code>ZoneListener</code> is currently subscribed to.</p>
+<h2 id="fields-2"><a class="header" href="#fields-2">Fields</a></h2>
+<hr />
+<h3 id="zonelistenerprecision-part--boundingbox"><a class="header" href="#zonelistenerprecision-part--boundingbox">ZoneListener.precision: "Part" | "BoundingBox"</a></h3>
+<p>Determines how precise the collision of <code>TrackGroup</code> items should be.</p>
+<div class="table-wrapper"><table><thead><tr><th>Precision</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>"Part"</code></td><td>In player items, model items, pvinstance items etc, the collision will be determined by the collision of their individual parts instead of the bounding box. So for example if a players arm extends into a zone such that the bounding box intersects it but no part actually touches it, this will not trigger an entry event.</td></tr>
+<tr><td><code>"BoundingBox"</code></td><td>In player items, model items, pvinstance items etc, the collision will be determined by the collision of their respective bounding boxes instead of the parts they're composed of. This is faster but can cause false-entries such as when specific pokey parts of a model extend the bounding box of it such that the bounding box intersects your zone but no part of it actually does.</td></tr>
+</tbody></table>
+</div>
+<h3 id="zonelistenerqueryshape-point--box"><a class="header" href="#zonelistenerqueryshape-point--box">ZoneListener.queryShape: "Point" | "Box"</a></h3>
+<p>Determines what method should be used to determine if a tracked item is in a zone or not.</p>
+<p>| Query Shape | Description |
+| <code>"Point"</code> | Items will be inside the zone if their center points collide with it. |
+| <code>"Box"</code> | Items will be inside the zone if their bounding box collides with it. |</p>
+<h3 id="zonelisteneritemsinside-zoneitems"><a class="header" href="#zonelisteneritemsinside-zoneitems">ZoneListener.itemsInside: ZoneItems</a></h3>
+<p>All the items geometrically inside the <code>Zone</code>s this <code>ZoneListener</code> is listening to.</p>
+<h3 TrackGroup="">ZoneListener.groups:</h3>
+<p><code>TrackGroup</code>s being tracked by this <code>ZoneListener</code>.</p>
+<h3 Zone="">ZoneListener.zones:</h3>
+<p><code>Zone</code>s this <code>ZoneListener</code> is subscribed to.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="trackgroup"><a class="header" href="#trackgroup">TrackGroup</a></h1>
 <hr />
 <p><code>TrackGroup</code>s are containers that contain items that <code>ZoneListener</code>s should be tracking for when they enter/exit the <code>Zone</code>s it's listening to.</p>
@@ -435,7 +457,7 @@ export type ZoneItem = {
 <p>Untracks the items inside <code>ZoneItems</code>, updating any listeners in the process.</p>
 <h3 id="trackgroupclear---"><a class="header" href="#trackgroupclear---">TrackGroup:clear() -&gt; ()</a></h3>
 <p>Removes all tracked items within this <code>TrackGroup</code>.</p>
-<h2 id="fields-2"><a class="header" href="#fields-2">Fields</a></h2>
+<h2 id="fields-3"><a class="header" href="#fields-3">Fields</a></h2>
 <hr />
 <h3 id="trackgroupmutable-zoneitems"><a class="header" href="#trackgroupmutable-zoneitems">TrackGroup.mutable: ZoneItems</a></h3>
 <p>A mutable list of tracked items that have not yet been registered into listeners.</p>
