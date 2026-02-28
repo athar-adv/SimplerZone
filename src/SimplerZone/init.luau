@@ -48,7 +48,7 @@ local function checkTrackGroupImmutable(group: ZoneItems)
 end
 
 local function noyieldcall<T...>(fn: (T...) -> ...any, ...: T...)
-	for _ in fn, ... do end
+	for _ in fn, ... do return end
 end
 
 local function MESH_isPointInShape(shape: Shape, worldCFrame: CFrame, point: vector)
