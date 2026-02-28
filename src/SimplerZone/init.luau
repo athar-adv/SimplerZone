@@ -1178,23 +1178,6 @@ function ZoneListener:onEnter(fn)
 	local data = self.data
 	table.insert(data.enterObservers, fn)
 
-	for _, part in self.itemsInside.parts do
-		noyieldcall(fn, {part = part})
-	end
-	for _, attachment in self.itemsInside.attachments do
-		noyieldcall(fn, {attachment = attachment})
-	end
-	for _, pvi in self.itemsInside.pvinstances do
-		noyieldcall(fn, {pvinstance = pvi})
-	end
-	for _, model in self.itemsInside.models do
-		local modelPlayer = Players:GetPlayerFromCharacter(model)
-		noyieldcall(fn, {model = model, player = modelPlayer})
-	end
-	for _, player in self.itemsInside.players do
-		noyieldcall(fn, {player = player, model = player.Character})
-	end
-
 	return function()
 		local index = table.find(data.enterObservers, fn)
 		if index then table.remove(data.enterObservers, index) end
@@ -1212,6 +1195,23 @@ function ZoneListener:onExit(fn)
 end
 
 function ZoneListener:observe(fn)
+	for _, part in self.itemsInside.parts do
+		noyieldcall(fn, {part = part})
+	end
+	for _, attachment in self.itemsInside.attachments do
+		noyieldcall(fn, {attachment = attachment})
+	end
+	for _, pvi in self.itemsInside.pvinstances do
+		noyieldcall(fn, {pvinstance = pvi})
+	end
+	for _, model in self.itemsInside.models do
+		local modelPlayer = Players:GetPlayerFromCharacter(model)
+		noyieldcall(fn, {model = model, player = modelPlayer})
+	end
+	for _, player in self.itemsInside.players do
+		noyieldcall(fn, {player = player, model = player.Character})
+	end
+	
 	return self:onEnter(function(item)
 		local cleanup = fn(item)
 		if cleanup then
