@@ -63,11 +63,17 @@ export type ShapeInstance = {
 	scale: vector,
 	zones: {Zone},
 	shape: Shape,
+	metadata: {[string]: any}
 }
 export type Zone = {
 	getRandomPoint: (Zone) -> vector,
+	
+	getShapeWithPoint: (Zone, point: vector) -> ShapeInstance?,
+	getShapeWithBox: (Zone, cframe: CFrame, size: vector) -> ShapeInstance?,
+	
 	isPointInZone: (Zone, point: vector) -> boolean,
 	isBoxInZone: (Zone, cframe: CFrame, size: vector) -> boolean,
+	
 	rebuild: (Zone) -> (),
 	rebuildIfDirty: (Zone) -> (),
 	
@@ -89,6 +95,7 @@ export type TrackGroup = {
 	immutable: ZoneItems,
 	listeners: {ZoneListener}
 }
+type ZoneCallbackItem = ZoneItem & {shape: ShapeInstance?}
 export type ZoneListenerData = {
 	partsSet: {[BasePart]: boolean},
 	attachmentsSet: {[Attachment]: boolean},
@@ -97,8 +104,8 @@ export type ZoneListenerData = {
 	partToPlayer: {[BasePart]: Player},
 	modelPartsInside: {[Model]: {BasePart}},
 	playerPartsInside: {[Player]: {BasePart}},
-	enterObservers: {(ZoneItem) -> ()},
-	exitObservers: {(ZoneItem) -> ()},
+	enterObservers: {(ZoneCallbackItem) -> ()},
+	exitObservers: {(ZoneCallbackItem) -> ()},
 	stopped: boolean,
 	partConnections: {[BasePart]: {RBXScriptConnection}},
 	attachmentConnections: {[Attachment]: {RBXScriptConnection}},
@@ -107,12 +114,12 @@ export type ZoneListenerData = {
 	playerConnections: {[Player]: {RBXScriptConnection}},
 }
 export type ZoneListener = typeof(setmetatable({}::{
-	onEnter: (ZoneListener, fn: (item: ZoneItem) -> ()) -> Disconnector,
-	onExit: (ZoneListener, fn: (item: ZoneItem) -> ()) -> Disconnector,
-	observe: (ZoneListener, fn: (item: ZoneItem) -> (() -> ())?) -> Disconnector,
+	onEnter: (ZoneListener, fn: (item: ZoneCallbackItem) -> ()) -> Disconnector,
+	onExit: (ZoneListener, fn: (item: ZoneCallbackItem) -> ()) -> Disconnector,
+	observe: (ZoneListener, fn: (item: ZoneCallbackItem) -> (() -> ())?) -> Disconnector,
 
 	setGroups: (ZoneListener, groups: {TrackGroup}) -> (),
-
+	
 	subscribe: (ZoneListener, zone: Zone) -> (),
 	unsubscribe: (ZoneListener, zone: Zone) -> (),
 	unsubscribeAll: (ZoneListener) -> (),

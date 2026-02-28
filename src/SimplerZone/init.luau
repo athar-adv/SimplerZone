@@ -47,6 +47,10 @@ local function checkTrackGroupImmutable(group: ZoneItems)
 	)
 end
 
+local function noyieldcall<T...>(fn: (T...) -> ...any, ...: T...)
+	for _ in fn, ... do end
+end
+
 local function MESH_isPointInShape(shape: Shape, worldCFrame: CFrame, point: vector)
 	if shape.ty ~= "Mesh" then return false end
 
@@ -85,44 +89,44 @@ local function getShapeTransform(shape: Shape)
 	error("exhaustive")
 end
 
-local function flattenShapeToBoxes(shape: Shape, worldCFrame: CFrame): {Geometry.Box}
+local function flattenShapeToBoxes(shape: Shape, worldCFrame: CFrame, shapeInst: ShapeInstance): {Geometry.Box}
 	local boxes: {Geometry.Box} = {}
 
 	if shape.ty == "Box" then
 		table.insert(boxes, {
 			cframe = worldCFrame * shape.transform,
 			size = shape.size,
-			data = {shape = shape, cframe = worldCFrame * shape.transform}
+			data = {shape = shape, cframe = worldCFrame * shape.transform, shapeInst = shapeInst}
 		})
 	elseif shape.ty == "Sphere" then
 		table.insert(boxes, {
 			cframe = worldCFrame * CFrame.new(shape.center :: any),
 			size = vector.create(shape.radius * 2, shape.radius * 2, shape.radius * 2),
-			data = {shape = shape, cframe = worldCFrame * CFrame.new(shape.center :: any)}
+			data = {shape = shape, cframe = worldCFrame * CFrame.new(shape.center :: any), shapeInst = shapeInst}
 		})
 	elseif shape.ty == "Cylinder" then
 		table.insert(boxes, {
 			cframe = worldCFrame * shape.transform,
 			size = shape.size,
-			data = {shape = shape, cframe = worldCFrame * shape.transform}
+			data = {shape = shape, cframe = worldCFrame * shape.transform, shapeInst = shapeInst}
 		})
 	elseif shape.ty == "Wedge" then
 		table.insert(boxes, {
 			cframe = worldCFrame * shape.transform,
 			size = shape.size,
-			data = {shape = shape, cframe = worldCFrame * shape.transform}
+			data = {shape = shape, cframe = worldCFrame * shape.transform, shapeInst = shapeInst}
 		})
 	elseif shape.ty == "Mesh" then
 		table.insert(boxes, {
 			cframe = worldCFrame * shape.transform,
 			size = shape.size,
-			data = {shape = shape, cframe = worldCFrame * shape.transform}
+			data = {shape = shape, cframe = worldCFrame * shape.transform, shapeInst = shapeInst}
 		})
 	elseif shape.ty == "Group" then
 		local groupWorldCFrame = worldCFrame * shape.transform
 		for _, childShape: Shape in shape.shapes do
 			local childWorldCFrame = groupWorldCFrame * getShapeTransform(childShape)
-			local childBoxes = flattenShapeToBoxes(childShape, childWorldCFrame)
+			local childBoxes = flattenShapeToBoxes(childShape, childWorldCFrame, shapeInst)
 			for _, box in childBoxes do
 				table.insert(boxes, box)
 			end
@@ -164,7 +168,7 @@ local function isBoxInShape(partCFrame: CFrame, partSize: vector, shape: Shape, 
 	return false
 end
 
-local function isPointInShapeVolume(point: vector, shape: Shape, worldCFrame: CFrame): boolean
+local function isPointInShapeVolume(point: vector, shape: Shape, worldCFrame: CFrame, shapeInst: ShapeInstance): boolean
 	if shape.ty == "Box" then
 		return Geometry.isPointInShape(point, "Block", worldCFrame * shape.transform, shape.size)
 	elseif shape.ty == "Sphere" then
@@ -191,7 +195,7 @@ local function isPointInShapeVolume(point: vector, shape: Shape, worldCFrame: CF
 		local groupWorldCFrame = worldCFrame * shape.transform
 		for _, childShape in shape.shapes do
 			if childShape.ty ~= "Group" then
-				local boxes = flattenShapeToBoxes(childShape, groupWorldCFrame)
+				local boxes = flattenShapeToBoxes(childShape, groupWorldCFrame, shapeInst)
 				if #boxes > 0 then
 					local box = boxes[1]
 					if not Geometry.isPointInShape(point, "Block", box.cframe, box.size) then
@@ -199,14 +203,14 @@ local function isPointInShapeVolume(point: vector, shape: Shape, worldCFrame: CF
 					end
 				end
 			else
-				local boxes = flattenShapeToBoxes(childShape, groupWorldCFrame)
+				local boxes = flattenShapeToBoxes(childShape, groupWorldCFrame, shapeInst)
 				local cf, size = Geometry.getBoundingBoxFromBoxes(boxes)
 				if not Geometry.isPointInShape(point, "Block", cf, size) then
 					continue
 				end
 			end
 
-			if isPointInShapeVolume(point, childShape, groupWorldCFrame) then
+			if isPointInShapeVolume(point, childShape, groupWorldCFrame, shapeInst) then
 				return true
 			end
 		end
@@ -218,10 +222,10 @@ local function isPointInShapeVolume(point: vector, shape: Shape, worldCFrame: CF
 	return false
 end
 
-local function checkPointInGroup(point: vector, bvh): boolean
-	if not bvh then return false end
-
-	local found = false
+local function checkPointInGroup(point: vector, bvh): ShapeInstance?
+	if not bvh then return nil end
+	
+	local foundShape = nil :: ShapeInstance?
 	Geometry.Bvh.traverseBVH(bvh, function(node, stop)
 		if not Geometry.isPointInShape(point, "Block", node.cframe, node.size) then
 			return false
@@ -229,8 +233,8 @@ local function checkPointInGroup(point: vector, bvh): boolean
 
 		if not node.left and not node.right then
 			local leaf = node.data
-			if leaf and isPointInShapeVolume(point, leaf.shape, leaf.cframe) then
-				found = true
+			if leaf and isPointInShapeVolume(point, leaf.shape, leaf.cframe, leaf.shapeInst) then
+				foundShape = leaf.shapeInst
 				stop()
 			end
 			return false
@@ -239,13 +243,13 @@ local function checkPointInGroup(point: vector, bvh): boolean
 		return true
 	end)
 
-	return found
+	return foundShape
 end
 
-local function checkBoxInGroup(cframe: CFrame, size: vector, bvh): boolean
-	if not bvh then return false end
-
-	local found = false
+local function checkBoxInGroup(cframe: CFrame, size: vector, bvh): ShapeInstance?
+	if not bvh then return nil end
+	
+	local foundShape = nil :: ShapeInstance?
 	Geometry.Bvh.traverseBVH(bvh, function(node, stop)
 		if not Geometry.doBoxesIntersect(cframe, size, node.cframe, node.size) then
 			return false
@@ -254,7 +258,7 @@ local function checkBoxInGroup(cframe: CFrame, size: vector, bvh): boolean
 		if not node.left and not node.right then
 			local leaf = node.data
 			if leaf and isBoxInShape(cframe, size, leaf.shape, leaf.cframe) then
-				found = true
+				foundShape = leaf.shapeInst
 				stop()
 			end
 			return false
@@ -263,10 +267,10 @@ local function checkBoxInGroup(cframe: CFrame, size: vector, bvh): boolean
 		return true
 	end)
 
-	return found
+	return foundShape
 end
 
-local function checkPartInGroup(part: BasePart, bvh): boolean
+local function checkPartInGroup(part: BasePart, bvh): ShapeInstance?
 	return checkBoxInGroup(part.CFrame, part.Size :: any, bvh)
 end
 
@@ -455,14 +459,19 @@ function Zone:rebuild()
 	local boxes: {Geometry.Box} = {}
 
 	for _, shapeInstance in self.shapes do
-		local shapeBoxes = flattenShapeToBoxes(shapeInstance.shape, shapeInstance.cframe)
+		local shapeBoxes = flattenShapeToBoxes(shapeInstance.shape, shapeInstance.cframe, shapeInstance)
 		for _, box in shapeBoxes do
 			table.insert(boxes, box)
 		end
 	end
 	
+	--self.boxes = boxes
+	--self.bvh = Geometry.Bvh.createBVH(boxes)
+	local updated, newBvh = Geometry.Bvh.updateBVH(self.bvh, self.boxes, boxes)
+	if updated then
+		self.bvh = newBvh
+	end
 	self.boxes = boxes
-	self.bvh = Geometry.Bvh.createBVH(boxes)
 	self.bvhDirty = false
 end
 
@@ -522,14 +531,22 @@ function Zone:getRandomPoint()
 	return getRandomPointInShape(shape, shapeInstance.cframe)
 end
 
-function Zone:isPointInZone(point: vector): boolean
+function Zone:getShapeWithPoint(point)
 	self:rebuildIfDirty()
 	return checkPointInGroup(point, self.bvh)
 end
 
-function Zone:isBoxInZone(cframe: CFrame, size: vector): boolean
+function Zone:getShapeWithBox(cframe, size)
 	self:rebuildIfDirty()
 	return checkBoxInGroup(cframe, size, self.bvh)
+end
+
+function Zone:isPointInZone(point)
+	return self:getShapeWithPoint(point) ~= nil
+end
+
+function Zone:isBoxInZone(cframe, size)
+	return self:getShapeWithBox(cframe, size) ~= nil
 end
 
 local function getPartsFromModel(model: Model): {BasePart}
@@ -572,7 +589,7 @@ local function ZoneListener_setupPartTracking(self: ZoneListener, part: BasePart
 	if precision == "BoundingBox" and owner then
 		return
 	end
-
+	
 	local isInside = false
 	for _, z in self.zones do
 		z:rebuildIfDirty()
@@ -632,9 +649,10 @@ local function ZoneListener_setupPartTracking(self: ZoneListener, part: BasePart
 				local index = table.find(self.itemsInside.parts, part)
 				if index then table.remove(self.itemsInside.parts, index) end
 				data.partsSet[part] = nil
-
+				
+				local item = {part = part}
 				for _, observer in data.exitObservers do
-					task.spawn(observer, {part = part})
+					noyieldcall(observer, item)
 				end
 			end
 			if data.partConnections[part] then
@@ -694,9 +712,10 @@ local function ZoneListener_setupAttachmentTracking(self: ZoneListener, attachme
 				local index = table.find(self.itemsInside.attachments, attachment)
 				if index then table.remove(self.itemsInside.attachments, index) end
 				data.attachmentsSet[attachment] = nil
-
+				
+				local item = {attachment = attachment}
 				for _, observer in data.exitObservers do
-					task.spawn(observer, {attachment = attachment})
+					noyieldcall(observer, item)
 				end
 			end
 			if data.attachmentConnections[attachment] then
@@ -733,7 +752,7 @@ local function ZoneListener_setupPVInstanceTracking(self: ZoneListener, pvi: PVI
 			break
 		end
 	end
-
+	
 	if isInside then
 		table.insert(self.itemsInside.pvinstances, pvi)
 		data.pvinstancesSet[pvi] = true
@@ -752,9 +771,10 @@ local function ZoneListener_setupPVInstanceTracking(self: ZoneListener, pvi: PVI
 				local index = table.find(self.itemsInside.pvinstances, pvi)
 				if index then table.remove(self.itemsInside.pvinstances, index) end
 				data.pvinstancesSet[pvi] = nil
-
+				
+				local item = {pvinstance = pvi}
 				for _, observer in data.exitObservers do
-					task.spawn(observer, {pvinstance = pvi})
+					noyieldcall(observer, item)
 				end
 			end
 			if data.pvinstanceConnections[pvi] then
@@ -834,8 +854,9 @@ local function ZoneListener_setupModelTracking(self: ZoneListener, model: Model)
 				local modelIndex = table.find(self.itemsInside.models, model)
 				if modelIndex then table.remove(self.itemsInside.models, modelIndex) end
 				local modelPlayer = Players:GetPlayerFromCharacter(model)
+				local item = {model = model, player = modelPlayer}
 				for _, observer in data.exitObservers do
-					task.spawn(observer, {model = model, player = modelPlayer})
+					noyieldcall(observer, item)
 				end
 			end
 		end
@@ -905,8 +926,9 @@ local function ZoneListener_setupPlayerTracking(self: ZoneListener, player: Play
 			data.playerPartsInside[player] = nil
 			local playerIndex = table.find(self.itemsInside.players, player)
 			if playerIndex then table.remove(self.itemsInside.players, playerIndex) end
+			local item = {player = player, model = player.Character}
 			for _, observer in data.exitObservers do
-				task.spawn(observer, {player = player, model = player.Character})
+				noyieldcall(observer, item)
 			end
 		end
 	end))
@@ -930,9 +952,10 @@ local function ZoneListener_cleanupPartTracking(self: ZoneListener, part: BasePa
 		local index = table.find(self.itemsInside.parts, part)
 		if index then table.remove(self.itemsInside.parts, index) end
 		data.partsSet[part] = nil
-
+		
+		local item = {part = part}
 		for _, observer in data.exitObservers do
-			task.spawn(observer, {part = part})
+			noyieldcall(observer, item)
 		end
 	end
 
@@ -952,9 +975,10 @@ local function ZoneListener_cleanupAttachmentTracking(self: ZoneListener, attach
 		local index = table.find(self.itemsInside.attachments, attachment)
 		if index then table.remove(self.itemsInside.attachments, index) end
 		data.attachmentsSet[attachment] = nil
-
+		
+		local item = {attachment = attachment}
 		for _, observer in data.exitObservers do
-			task.spawn(observer, {attachment = attachment})
+			noyieldcall(observer, item)
 		end
 	end
 end
@@ -972,9 +996,10 @@ local function ZoneListener_cleanupPVInstanceTracking(self: ZoneListener, pvi: P
 		local index = table.find(self.itemsInside.pvinstances, pvi)
 		if index then table.remove(self.itemsInside.pvinstances, index) end
 		data.pvinstancesSet[pvi] = nil
-
+		
+		local item = {pvinstance = pvi}
 		for _, observer in data.exitObservers do
-			task.spawn(observer, {pvinstance = pvi})
+			noyieldcall(observer, item)
 		end
 	end
 end
@@ -1003,8 +1028,9 @@ local function ZoneListener_cleanupModelTracking(self: ZoneListener, model: Mode
 		if modelIndex then table.remove(self.itemsInside.models, modelIndex) end
 
 		local modelPlayer = Players:GetPlayerFromCharacter(model)
+		local item = {model = model, player = modelPlayer}
 		for _, observer in data.exitObservers do
-			task.spawn(observer, {model = model, player = modelPlayer})
+			noyieldcall(observer, item)
 		end
 	end
 end
@@ -1031,9 +1057,10 @@ local function ZoneListener_cleanupPlayerTracking(self: ZoneListener, player: Pl
 		data.playerPartsInside[player] = nil
 		local playerIndex = table.find(self.itemsInside.players, player)
 		if playerIndex then table.remove(self.itemsInside.players, playerIndex) end
-
+		
+		local item = {player = player, model = player.Character}
 		for _, observer in data.exitObservers do
-			task.spawn(observer, {player = player, model = player.Character})
+			noyieldcall(observer, item)
 		end
 	end
 end
@@ -1147,25 +1174,25 @@ local function ZoneListener_incrementalUpdate(self: ZoneListener, oldImmutable, 
 	end
 end
 
-function ZoneListener:onEnter(fn: (ZoneItem) -> ())
+function ZoneListener:onEnter(fn)
 	local data = self.data
 	table.insert(data.enterObservers, fn)
 
 	for _, part in self.itemsInside.parts do
-		task.spawn(fn, {part = part})
+		noyieldcall(fn, {part = part})
 	end
 	for _, attachment in self.itemsInside.attachments do
-		task.spawn(fn, {attachment = attachment})
+		noyieldcall(fn, {attachment = attachment})
 	end
 	for _, pvi in self.itemsInside.pvinstances do
-		task.spawn(fn, {pvinstance = pvi})
+		noyieldcall(fn, {pvinstance = pvi})
 	end
 	for _, model in self.itemsInside.models do
 		local modelPlayer = Players:GetPlayerFromCharacter(model)
-		task.spawn(fn, {model = model, player = modelPlayer})
+		noyieldcall(fn, {model = model, player = modelPlayer})
 	end
 	for _, player in self.itemsInside.players do
-		task.spawn(fn, {player = player, model = player.Character})
+		noyieldcall(fn, {player = player, model = player.Character})
 	end
 
 	return function()
@@ -1174,7 +1201,7 @@ function ZoneListener:onEnter(fn: (ZoneItem) -> ())
 	end
 end
 
-function ZoneListener:onExit(fn: (ZoneItem) -> ())
+function ZoneListener:onExit(fn)
 	local data = self.data
 	table.insert(data.exitObservers, fn)
 
@@ -1211,6 +1238,7 @@ local function ZoneListener_checkAndUpdatePart(self: ZoneListener, zone: Zone, p
 	--if not part:IsDescendantOf(game) then return end
 
 	local isInsideAny = false
+	local shape
 	for _, z in self.zones do
 		z:rebuildIfDirty()
 
@@ -1222,6 +1250,7 @@ local function ZoneListener_checkAndUpdatePart(self: ZoneListener, zone: Zone, p
 		end
 
 		if isInside then
+			shape = isInside
 			isInsideAny = true
 			break
 		end
@@ -1244,8 +1273,9 @@ local function ZoneListener_checkAndUpdatePart(self: ZoneListener, zone: Zone, p
 				if #data.modelPartsInside[model] == 1 then
 					table.insert(self.itemsInside.models, model)
 					local modelPlayer = Players:GetPlayerFromCharacter(model)
+					local item = {model = model, player = modelPlayer, shape = shape}
 					for _, observer in data.enterObservers do
-						task.spawn(observer, {model = model, player = modelPlayer})
+						noyieldcall(observer, item)
 					end
 				end
 			elseif typeof(owner) == "Instance" and owner:IsA("Player") then
@@ -1257,14 +1287,16 @@ local function ZoneListener_checkAndUpdatePart(self: ZoneListener, zone: Zone, p
 
 				if #data.playerPartsInside[player] == 1 then
 					table.insert(self.itemsInside.players, player)
+					local item = {player = player, model = player.Character, shape = shape}
 					for _, observer in data.enterObservers do
-						task.spawn(observer, {player = player, model = player.Character})
+						noyieldcall(observer, item)
 					end
 				end
 			end
 		else
+			local item = {part = part, shape = shape}
 			for _, observer in data.enterObservers do
-				task.spawn(observer, {part = part})
+				noyieldcall(observer, item)
 			end
 		end
 	elseif not isInsideAny and wasInside then
@@ -1284,8 +1316,9 @@ local function ZoneListener_checkAndUpdatePart(self: ZoneListener, zone: Zone, p
 						local modelIndex = table.find(self.itemsInside.models, model)
 						if modelIndex then table.remove(self.itemsInside.models, modelIndex) end
 						local modelPlayer = Players:GetPlayerFromCharacter(model)
+						local item = {model = model, player = modelPlayer, shape = shape}
 						for _, observer in data.exitObservers do
-							task.spawn(observer, {model = model, player = modelPlayer})
+							noyieldcall(observer, item)
 						end
 					end
 				end
@@ -1299,15 +1332,17 @@ local function ZoneListener_checkAndUpdatePart(self: ZoneListener, zone: Zone, p
 						data.playerPartsInside[player] = nil
 						local playerIndex = table.find(self.itemsInside.players, player)
 						if playerIndex then table.remove(self.itemsInside.players, playerIndex) end
+						local item = {player = player, model = player.Character, shape = shape}
 						for _, observer in data.exitObservers do
-							task.spawn(observer, {player = player, model = player.Character})
+							noyieldcall(observer, item)
 						end
 					end
 				end
 			end
 		else
+			local item = {part = part, shape = shape}
 			for _, observer in data.exitObservers do
-				task.spawn(observer, {part = part})
+				noyieldcall(observer, item)
 			end
 		end
 	end
@@ -1324,9 +1359,12 @@ local function ZoneListener_checkAndUpdateAttachment(self: ZoneListener, zone: Z
 	local pos = getAttachmentWorldPosition(attachment)
 
 	local isInsideAny = false
+	local shape
 	for _, z in self.zones do
 		z:rebuildIfDirty()
-		if checkPointInGroup(pos, z.bvh) then
+		local result = checkPointInGroup(pos, z.bvh)
+		if result then
+			shape = result
 			isInsideAny = true
 			break
 		end
@@ -1337,15 +1375,17 @@ local function ZoneListener_checkAndUpdateAttachment(self: ZoneListener, zone: Z
 	if isInsideAny and not wasInside then
 		table.insert(self.itemsInside.attachments, attachment)
 		data.attachmentsSet[attachment] = true
+		local item = {attachment = attachment, shape = shape}
 		for _, observer in data.enterObservers do
-			task.spawn(observer, {attachment = attachment})
+			noyieldcall(observer, item)
 		end
 	elseif not isInsideAny and wasInside then
 		local index = table.find(self.itemsInside.attachments, attachment)
 		if index then table.remove(self.itemsInside.attachments, index) end
 		data.attachmentsSet[attachment] = nil
+		local item = {attachment = attachment, shape = shape}
 		for _, observer in data.exitObservers do
-			task.spawn(observer, {attachment = attachment})
+			noyieldcall(observer, item)
 		end
 	end
 end
@@ -1359,19 +1399,21 @@ local function ZoneListener_checkAndUpdatePVInstance(self: ZoneListener, zone: Z
 	--if not pvi:IsDescendantOf(game) then return end
 
 	local isInsideAny = false
+	local shape
 	for _, z in self.zones do
 		z:rebuildIfDirty()
 
 		local inside
 		if queryShape == "Point" then
 			local pivot = pvi:GetPivot()
-			inside = z:isPointInZone(pivot.Position :: any)
+			inside = z:getShapeWithPoint(pivot.Position :: any)
 		else
 			local cf, size = getPVInstanceBounds(pvi)
-			inside = z:isBoxInZone(cf, size)
+			inside = z:getShapeWithBox(cf, size)
 		end
 
 		if inside then
+			shape = inside
 			isInsideAny = true
 			break
 		end
@@ -1382,15 +1424,17 @@ local function ZoneListener_checkAndUpdatePVInstance(self: ZoneListener, zone: Z
 	if isInsideAny and not wasInside then
 		table.insert(self.itemsInside.pvinstances, pvi)
 		data.pvinstancesSet[pvi] = true
+		local item = {pvinstance = pvi, shape = shape}
 		for _, observer in data.enterObservers do
-			task.spawn(observer, {pvinstance = pvi})
+			noyieldcall(observer, item)
 		end
 	elseif not isInsideAny and wasInside then
 		local index = table.find(self.itemsInside.pvinstances, pvi)
 		if index then table.remove(self.itemsInside.pvinstances, index) end
 		data.pvinstancesSet[pvi] = nil
+		local item = {pvinstance = pvi, shape = shape}
 		for _, observer in data.exitObservers do
-			task.spawn(observer, {pvinstance = pvi})
+			noyieldcall(observer, item)
 		end
 	end
 end
@@ -1404,19 +1448,21 @@ local function ZoneListener_checkAndUpdateModel(self: ZoneListener, zone: Zone, 
 	--if not model:IsDescendantOf(game) then return end
 
 	local isBoxInZoneAny = false
+	local shape
 	for _, z in self.zones do
 		z:rebuildIfDirty()
 
 		local isBoxInZone
 		if queryShape == "Point" then
 			local pivot = model:GetPivot().Position
-			isBoxInZone = z:isPointInZone(pivot :: any)
+			isBoxInZone = z:getShapeWithPoint(pivot :: any)
 		else
 			local cf, size = model:GetBoundingBox()
-			isBoxInZone = z:isBoxInZone(cf, size :: any)
+			isBoxInZone = z:getShapeWithBox(cf, size :: any)
 		end
 
 		if isBoxInZone then
+			shape = isBoxInZone
 			isBoxInZoneAny = true
 			break
 		end
@@ -1429,16 +1475,18 @@ local function ZoneListener_checkAndUpdateModel(self: ZoneListener, zone: Zone, 
 			data.modelPartsInside[model] = {}
 			table.insert(self.itemsInside.models, model)
 			local modelPlayer = Players:GetPlayerFromCharacter(model)
+			local item = {model = model, player = modelPlayer, shape = shape}
 			for _, observer in data.enterObservers do
-				task.spawn(observer, {model = model, player = modelPlayer})
+				noyieldcall(observer, item)
 			end
 		elseif not isBoxInZoneAny and wasInside then
 			data.modelPartsInside[model] = nil
 			local modelIndex = table.find(self.itemsInside.models, model)
 			if modelIndex then table.remove(self.itemsInside.models, modelIndex) end
 			local modelPlayer = Players:GetPlayerFromCharacter(model)
+			local item = {model = model, player = modelPlayer, shape = shape}
 			for _, observer in data.exitObservers do
-				task.spawn(observer, {model = model, player = modelPlayer})
+				noyieldcall(observer, item)
 			end
 		end
 		return
@@ -1457,8 +1505,9 @@ local function ZoneListener_checkAndUpdateModel(self: ZoneListener, zone: Zone, 
 			local modelIndex = table.find(self.itemsInside.models, model)
 			if modelIndex then table.remove(self.itemsInside.models, modelIndex) end
 			local modelPlayer = Players:GetPlayerFromCharacter(model)
+			local item = {model = model, player = modelPlayer, shape = shape}
 			for _, observer in data.exitObservers do
-				task.spawn(observer, {model = model, player = modelPlayer})
+				noyieldcall(observer, item)
 			end
 		end
 		return
@@ -1481,19 +1530,21 @@ local function ZoneListener_checkAndUpdatePlayer(self: ZoneListener, zone: Zone,
 	--if not character or not character:IsDescendantOf(game) then return end
 
 	local isBoxInZoneAny = false
+	local shape
 	for _, z in self.zones do
 		z:rebuildIfDirty()
 
 		local isBoxInZone
 		if queryShape == "Point" then
 			local pivot = character:GetPivot().Position
-			isBoxInZone = z:isPointInZone(pivot :: any)
+			isBoxInZone = z:getShapeWithPoint(pivot :: any)
 		else
 			local cf, size = character:GetBoundingBox()
-			isBoxInZone = z:isBoxInZone(cf, size :: any)
+			isBoxInZone = z:getShapeWithBox(cf, size :: any)
 		end
 
 		if isBoxInZone then
+			shape = isBoxInZone
 			isBoxInZoneAny = true
 			break
 		end
@@ -1505,20 +1556,22 @@ local function ZoneListener_checkAndUpdatePlayer(self: ZoneListener, zone: Zone,
 		if isBoxInZoneAny and not wasInside then
 			data.playerPartsInside[player] = {}
 			table.insert(self.itemsInside.players, player)
+			local item = {player = player, model = player.Character, shape = shape}
 			for _, observer in data.enterObservers do
-				task.spawn(observer, {player = player, model = player.Character})
+				noyieldcall(observer, item)
 			end
 		elseif not isBoxInZoneAny and wasInside then
 			data.playerPartsInside[player] = nil
 			local playerIndex = table.find(self.itemsInside.players, player)
 			if playerIndex then table.remove(self.itemsInside.players, playerIndex) end
+			local item = {player = player, model = player.Character, shape = shape}
 			for _, observer in data.exitObservers do
-				task.spawn(observer, {player = player, model = player.Character})
+				noyieldcall(observer, item)
 			end
 		end
 		return
 	end
-
+	
 	if not isBoxInZoneAny then
 		if data.playerPartsInside[player] then
 			for _, part in data.playerPartsInside[player] do
@@ -1530,8 +1583,9 @@ local function ZoneListener_checkAndUpdatePlayer(self: ZoneListener, zone: Zone,
 			data.playerPartsInside[player] = nil
 			local playerIndex = table.find(self.itemsInside.players, player)
 			if playerIndex then table.remove(self.itemsInside.players, playerIndex) end
+			local item = {player = player, model = player.Character, shape = shape}
 			for _, observer in data.exitObservers do
-				task.spawn(observer, {player = player, model = player.Character})
+				noyieldcall(observer, item)
 			end
 		end
 		return
@@ -1719,6 +1773,8 @@ local function createZone(shapeInstances: {ShapeInstance}?): Zone
 		getRandomPoint = Zone.getRandomPoint,
 		isPointInZone = Zone.isPointInZone,
 		isBoxInZone = Zone.isBoxInZone,
+		getShapeWithPoint = Zone.getShapeWithPoint,
+		getShapeWithBox = Zone.getShapeWithBox,
 		rebuild = Zone.rebuild,
 		rebuildIfDirty = Zone.rebuildIfDirty,
 
@@ -1755,7 +1811,7 @@ local function createMeshShape(mesh: MeshPart, cframe: CFrame?): MeshShape
 	}
 end
 
-local function createShapeInstance(shape: Shape): ShapeInstance
+local function createShapeInstance(shape: Shape, metadata: {[string]: any}?): ShapeInstance
 	return {
 		shape = shape,
 		zones = {},
@@ -1769,6 +1825,7 @@ local function createShapeInstance(shape: Shape): ShapeInstance
 
 		cframe = CFrame.identity,
 		scale = vector.one,
+		metadata = metadata or {}
 	}
 end
 

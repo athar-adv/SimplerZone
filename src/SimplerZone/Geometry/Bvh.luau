@@ -161,42 +161,90 @@ local function createBVH(boxes: {Box}): (BvhNode)
 end
 
 local function needsUpdate(oldBox: Box, newBox: Box, threshold: number)
-	local distance = vector.magnitude((oldBox.cframe.Position - newBox.cframe.Position) :: any)
+	local distance = vector.magnitude((oldBox.cframe.Position - newBox.cframe.Position)::any)
 	local sizeChange = vector.magnitude(oldBox.size - newBox.size)
 	return distance > threshold or sizeChange > threshold
 end
 
-local function updateBVHNode(node: BvhNode?, newBoxes: {Box}, threshold: number): boolean
+local function updateBVHNode(node: BvhNode?, oldBoxes: {Box}, newBoxes: {Box}, threshold: number)
 	if not node then return false end
 
 	-- Leaf node
-	if node.data then
+	if node.data and node.data.shapeInst then
+		local oldBox = {
+			cframe = node.cframe,
+			size = node.size,
+			--volume = node.volume,
+			data = node.data
+		}
+
+		-- Find corresponding new box
 		local newBox
 		for _, box in newBoxes do
-			if box.data == node.data then
+			if box.data.shapeInst == node.data.shapeInst then
 				newBox = box
 				break
 			end
 		end
-
-		if newBox then
-			local oldBox: Box = { cframe = node.cframe, size = node.size, data = node.data }
-			if needsUpdate(oldBox, newBox, threshold) then
-				node.cframe = newBox.cframe
-				node.size   = newBox.size
-				return true
-			end
+		
+		if newBox and needsUpdate(oldBox, newBox, threshold) then
+			node.cframe = newBox.cframe
+			node.size = newBox.size
+			node.data = newBox.data
+			return true
 		end
-
 		return false
 	end
 
-	-- Internal node: recurse into children first, then refit self if anything changed.
-	local leftChanged  = updateBVHNode(node.left,  newBoxes, threshold)
-	local rightChanged = updateBVHNode(node.right, newBoxes, threshold)
+	-- Internal node
+	local leftUpdated = updateBVHNode(node.left, oldBoxes, newBoxes, threshold)
+	local rightUpdated = updateBVHNode(node.right, oldBoxes, newBoxes, threshold)
 
-	if leftChanged or rightChanged then
-		refitFromChildren(node)
+	-- If either child updated, recalculate bounds
+	if leftUpdated or rightUpdated then
+		-- Get combined bounds of children
+		local leftBounds = node.left and {
+			cframe = node.left.cframe,
+			size = node.left.size,
+			--volume = node.left.volume
+		}
+		local rightBounds = node.right and {
+			cframe = node.right.cframe,
+			size = node.right.size,
+			--volume = node.right.volume
+		}
+
+		if leftBounds and rightBounds then
+			local leftPos: vector = leftBounds.cframe.Position :: any
+			local rightPos: vector = rightBounds.cframe.Position :: any
+
+			local minBounds = vector.create(
+				math.min(leftPos.x - leftBounds.size.x/2, rightPos.x - rightBounds.size.x/2),
+				math.min(leftPos.y - leftBounds.size.y/2, rightPos.y - rightBounds.size.y/2),
+				math.min(leftPos.z - leftBounds.size.z/2, rightPos.z - rightBounds.size.z/2)
+			)
+
+			local maxBounds = vector.create(
+				math.max(leftPos.x + leftBounds.size.x/2, rightPos.x + rightBounds.size.x/2),
+				math.max(leftPos.y + leftBounds.size.y/2, rightPos.y + rightBounds.size.y/2),
+				math.max(leftPos.z + leftBounds.size.z/2, rightPos.z + rightBounds.size.z/2)
+			)
+			local size = maxBounds - minBounds
+			local center = (minBounds + maxBounds) / 2
+
+			node.cframe = CFrame.new(center::any)
+			node.size = size
+			--node.volume = size.x * size.y * size.z
+		elseif leftBounds then
+			node.cframe = leftBounds.cframe
+			node.size = leftBounds.size
+			--node.volume = leftBounds.volume
+		elseif rightBounds then
+			node.cframe = rightBounds.cframe
+			node.size = rightBounds.size
+			--node.volume = rightBounds.volume
+		end
+
 		return true
 	end
 
@@ -204,23 +252,20 @@ local function updateBVHNode(node: BvhNode?, newBoxes: {Box}, threshold: number)
 end
 
 local function updateBVH(bvh: BvhNode, oldBoxes: {Box}, newBoxes: {Box}, threshold: number?)
-	local threshold = threshold or 0.1
-	
+	local threshold = threshold or 0
+
 	if bvh.size == vector.zero and #newBoxes > 0 then
 		local newBVH = createBVH(newBoxes)
 		bvh.cframe = newBVH.cframe
-		bvh.size   = newBVH.size
-		bvh.left   = newBVH.left
-		bvh.right  = newBVH.right
+		bvh.size = newBVH.size
+		bvh.left = newBVH.left
+		bvh.right = newBVH.right
+
 		return true, bvh
 	end
 
-	local changed = updateBVHNode(bvh, newBoxes, threshold)
-	if changed then
-		refitFromChildren(bvh)
-	end
-
-	return changed, bvh
+	local success = updateBVHNode(bvh, oldBoxes, newBoxes, threshold)
+	return success, bvh
 end
 
 local function visualize(bvh)
