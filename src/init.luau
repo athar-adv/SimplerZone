@@ -2577,28 +2577,30 @@ return table.freeze({
 	},
 	getZonesAtPoint = getZonesAtPoint,
 	
-	getZoneVisualizer = function(zone: Zone)
-		local visualizer = {
-			update = function(self: ZoneVisualizer, parent: Instance?)
-				self:destroy()
-				local parts = Geometry.Bvh.visualize(zone.bvh)
-				for _, v in parts do
-					v.Parent = parent
-				end
-				self.currentParts = (parts :: {Part}?)
-			end,
-			destroy = function(self: ZoneVisualizer)
-				if self.currentParts then
-					for _, v in self.currentParts do
-						v:Destroy()
+	visualizer = {
+		new = function(zone: Zone)
+			local visualizer = {
+				update = function(self: ZoneVisualizer, parent: Instance?)
+					self:destroy()
+					local parts = Geometry.Bvh.visualize(zone.bvh)
+					for _, v in parts do
+						v.Parent = parent
 					end
-					self.currentParts = nil
-				end
-			end,
-			currentParts = (nil :: any)::{Part}?
-		}
-		type ZoneVisualizer = typeof(visualizer)
-		return visualizer :: ZoneVisualizer
-	end,
+					self.currentParts = (parts :: {Part}?)
+				end,
+				destroy = function(self: ZoneVisualizer)
+					if self.currentParts then
+						for _, v in self.currentParts do
+							v:Destroy()
+						end
+						self.currentParts = nil
+					end
+				end,
+				currentParts = (nil :: any)::{Part}?
+			}
+			type ZoneVisualizer = typeof(visualizer)
+			return visualizer :: ZoneVisualizer
+		end
+	},
 	geometry = Geometry
 })
