@@ -76,6 +76,8 @@ export type Zone = {
 	rebuild: (Zone) -> (),
 	rebuildIfDirty: (Zone) -> (),
 	
+	bvhRestructureWeight: number,
+	
 	shapes: {ShapeInstance},
 	bvh: Geometry.BvhNode,
 	boxes: {Geometry.Box},

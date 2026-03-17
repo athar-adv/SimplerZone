@@ -89,39 +89,65 @@ local function getShapeTransform(shape: Shape)
 	error("exhaustive")
 end
 
+local function getWorldAABB(cf: CFrame, size: vector): (vector, vector)
+	local hx, hy, hz = size.x / 2, size.y / 2, size.z / 2
+	local ax = vector.create(math.abs(cf.RightVector.X), math.abs(cf.RightVector.Y), math.abs(cf.RightVector.Z))
+	local ay = vector.create(math.abs(cf.UpVector.X), math.abs(cf.UpVector.Y), math.abs(cf.UpVector.Z))
+	local az = vector.create(math.abs(cf.LookVector.X), math.abs(cf.LookVector.Y), math.abs(cf.LookVector.Z))
+	local worldHalf = vector.create(
+		ax.x * hx + ay.x * hy + az.x * hz,
+		ax.y * hx + ay.y * hy + az.y * hz,
+		ax.z * hx + ay.z * hy + az.z * hz
+	)
+	local pos: vector = cf.Position :: any
+	return pos - worldHalf, pos + worldHalf
+end
+
+local function toAABB(cf: CFrame, size: vector): (CFrame, vector)
+	local min, max = getWorldAABB(cf, size)
+	local aabbSize = max - min
+	local aabbCenter = (min + max) / 2
+	return CFrame.new(aabbCenter :: any), aabbSize
+end
+
+local function pointInAABB(point: vector, boxCFrame: CFrame, boxSize: vector): boolean
+	local local_point: vector = boxCFrame:PointToObjectSpace(point :: any) :: any
+	local h = boxSize / 2
+	return math.abs(local_point.x) <= h.x
+		and math.abs(local_point.y) <= h.y
+		and math.abs(local_point.z) <= h.z
+end
+
+local function obbInAABB(obbCFrame: CFrame, obbSize: vector, aabbCFrame: CFrame, aabbSize: vector): boolean
+	local min, max = getWorldAABB(obbCFrame, obbSize)
+	local obbAABBCenter = (min + max) / 2
+	local obbAABBSize = max - min
+	local aabbPos: vector = aabbCFrame.Position :: any
+	local ah = aabbSize / 2
+	local oh = obbAABBSize / 2
+	return math.abs(obbAABBCenter.x - aabbPos.x) <= ah.x + oh.x
+		and math.abs(obbAABBCenter.y - aabbPos.y) <= ah.y + oh.y
+		and math.abs(obbAABBCenter.z - aabbPos.z) <= ah.z + oh.z
+end
+
 local function flattenShapeToBoxes(shape: Shape, worldCFrame: CFrame, shapeInst: ShapeInstance): {Geometry.Box}
 	local boxes: {Geometry.Box} = {}
-
 	if shape.ty == "Box" then
-		table.insert(boxes, {
-			cframe = worldCFrame * shape.transform,
-			size = shape.size,
-			data = {shape = shape, cframe = worldCFrame * shape.transform, shapeInst = shapeInst}
-		})
+		local cf, size = toAABB(worldCFrame * shape.transform, shape.size * shapeInst.scale)
+		table.insert(boxes, { cframe = cf, size = size, data = {shape = shape, cframe = worldCFrame * shape.transform, shapeInst = shapeInst} })
 	elseif shape.ty == "Sphere" then
-		table.insert(boxes, {
-			cframe = worldCFrame * CFrame.new(shape.center :: any),
-			size = vector.create(shape.radius * 2, shape.radius * 2, shape.radius * 2),
-			data = {shape = shape, cframe = worldCFrame * CFrame.new(shape.center :: any), shapeInst = shapeInst}
-		})
+		local cf = worldCFrame * CFrame.new(shape.center :: any)
+		local size = vector.create(shape.radius * 2, shape.radius * 2, shape.radius * 2) * shapeInst.scale
+		table.insert(boxes, { cframe = cf, size = size, data = {shape = shape, cframe = cf, shapeInst = shapeInst} })
 	elseif shape.ty == "Cylinder" then
-		table.insert(boxes, {
-			cframe = worldCFrame * shape.transform,
-			size = shape.size,
-			data = {shape = shape, cframe = worldCFrame * shape.transform, shapeInst = shapeInst}
-		})
+		local cf, size = toAABB(worldCFrame * shape.transform, shape.size * shapeInst.scale)
+		table.insert(boxes, { cframe = cf, size = size, data = {shape = shape, cframe = worldCFrame * shape.transform, shapeInst = shapeInst} })
 	elseif shape.ty == "Wedge" then
-		table.insert(boxes, {
-			cframe = worldCFrame * shape.transform,
-			size = shape.size,
-			data = {shape = shape, cframe = worldCFrame * shape.transform, shapeInst = shapeInst}
-		})
+		local cf, size = toAABB(worldCFrame * shape.transform, shape.size * shapeInst.scale)
+		table.insert(boxes, { cframe = cf, size = size, data = {shape = shape, cframe = worldCFrame * shape.transform, shapeInst = shapeInst} })
 	elseif shape.ty == "Mesh" then
-		table.insert(boxes, {
-			cframe = worldCFrame * shape.transform,
-			size = shape.size,
-			data = {shape = shape, cframe = worldCFrame * shape.transform, shapeInst = shapeInst}
-		})
+		local cf, size = toAABB(worldCFrame * shape.transform, shape.size * shapeInst.scale)
+		table.insert(boxes, { cframe = cf, size = size, data = {shape = shape, cframe = worldCFrame * shape.transform, shapeInst = shapeInst} })
 	elseif shape.ty == "Group" then
 		local groupWorldCFrame = worldCFrame * shape.transform
 		for _, childShape: Shape in shape.shapes do
@@ -132,7 +158,6 @@ local function flattenShapeToBoxes(shape: Shape, worldCFrame: CFrame, shapeInst:
 			end
 		end
 	end
-
 	return boxes
 end
 
@@ -170,7 +195,17 @@ end
 
 local function isPointInShapeVolume(point: vector, shape: Shape, worldCFrame: CFrame, shapeInst: ShapeInstance): boolean
 	if shape.ty == "Box" then
-		return Geometry.isPointInShape(point, "Block", worldCFrame * shape.transform, shape.size)
+		local cf = worldCFrame * shape.transform
+		local size = shape.size
+		
+		local halfSize = size / 2
+		local localPoint = cf:PointToObjectSpace(point :: any)
+
+		local withinX = math.abs(localPoint.X) <= halfSize.x
+		local withinY = math.abs(localPoint.Y) <= halfSize.y
+		local withinZ = math.abs(localPoint.Z) <= halfSize.z
+
+		return withinX and withinY and withinZ
 	elseif shape.ty == "Sphere" then
 		local sphereCenter = (worldCFrame * CFrame.new(shape.center :: any)).Position
 		local distance = vector.magnitude(point - (sphereCenter :: any))
@@ -190,7 +225,28 @@ local function isPointInShapeVolume(point: vector, shape: Shape, worldCFrame: CF
 		local radialVector = toPoint - (axisUnit :: any) * projectionLength
 		return radialVector.Magnitude <= shape.radius
 	elseif shape.ty == "Wedge" then
-		return Geometry.isPointInShape(point, "Wedge", worldCFrame * shape.transform, shape.size)
+		local size = shape.size
+		local cf = worldCFrame * shape.transform
+		local pos = cf.Position
+
+		local s2 = size / 2
+
+		local xvec = cf.XVector.Unit * s2.x
+		local yvec = cf.YVector.Unit * s2.y
+		local zvec = cf.ZVector.Unit * s2.z
+
+		-- Backwards, right, up
+		local a = pos + xvec + zvec + yvec
+		-- Backwards, right, down
+		local b = pos + xvec + zvec - yvec
+		-- Forwards, right, down
+		local c = pos + xvec - zvec - yvec
+
+		local point = cf:PointToWorldSpace(
+			cf:PointToObjectSpace(point :: any) :: any * vector.create(0, 1, 1) + vector.create(size.x/2, 0, 0)
+		) :: any
+
+		return Geometry.isPointInTri(point, a :: any, b :: any, c :: any)
 	elseif shape.ty == "Group" then
 		local groupWorldCFrame = worldCFrame * shape.transform
 		for _, childShape in shape.shapes do
@@ -198,14 +254,14 @@ local function isPointInShapeVolume(point: vector, shape: Shape, worldCFrame: CF
 				local boxes = flattenShapeToBoxes(childShape, groupWorldCFrame, shapeInst)
 				if #boxes > 0 then
 					local box = boxes[1]
-					if not Geometry.isPointInShape(point, "Block", box.cframe, box.size) then
+					if not pointInAABB(point, box.cframe, box.size) then
 						continue
 					end
 				end
 			else
 				local boxes = flattenShapeToBoxes(childShape, groupWorldCFrame, shapeInst)
 				local cf, size = Geometry.getBoundingBoxFromBoxes(boxes)
-				if not Geometry.isPointInShape(point, "Block", cf, size) then
+				if not pointInAABB(point, cf, size) then
 					continue
 				end
 			end
@@ -227,7 +283,7 @@ local function checkPointInGroup(point: vector, bvh): ShapeInstance?
 	
 	local foundShape = nil :: ShapeInstance?
 	Geometry.Bvh.traverseBVH(bvh, function(node, stop)
-		if not Geometry.isPointInShape(point, "Block", node.cframe, node.size) then
+		if not pointInAABB(point, node.cframe, node.size) then
 			return false
 		end
 
@@ -251,7 +307,7 @@ local function checkBoxInGroup(cframe: CFrame, size: vector, bvh): ShapeInstance
 	
 	local foundShape = nil :: ShapeInstance?
 	Geometry.Bvh.traverseBVH(bvh, function(node, stop)
-		if not Geometry.doBoxesIntersect(cframe, size, node.cframe, node.size) then
+		if not obbInAABB(cframe, size, node.cframe, node.size) then
 			return false
 		end
 
@@ -386,7 +442,7 @@ end
 
 function ShapeInstance:syncWithPart(part)
 	self.cframe = part.CFrame
-	self.scale = getScale(self.shape, part.Size :: any)
+	self.scale = getScale(self.shape, part.ExtentsSize :: any)
 
 	local function onCFrameChanged()
 		self.cframe = part.CFrame
@@ -397,7 +453,7 @@ function ShapeInstance:syncWithPart(part)
 	end
 	
 	local function onSizeChanged()
-		self.scale = getScale(self.shape, part.Size :: any)
+		self.scale = getScale(self.shape, part.ExtentsSize :: any)
 		for _, zone in self.zones do
 			zone.bvhDirty = true
 			ZoneScheduler.markZoneDirtyForListeners(zone)
@@ -467,7 +523,7 @@ function Zone:rebuild()
 	
 	--self.boxes = boxes
 	--self.bvh = Geometry.Bvh.createBVH(boxes)
-	local updated, newBvh = Geometry.Bvh.updateBVH(self.bvh, self.boxes, boxes)
+	local updated, newBvh = Geometry.Bvh.updateBVH(self.bvh, self.boxes, boxes, self.bvhRestructureWeight)
 	if updated then
 		self.bvh = newBvh
 	end
@@ -1927,7 +1983,8 @@ local function createZone(shapeInstances: {ShapeInstance}?, metadata: {[string]:
 		getShapeWithBox = Zone.getShapeWithBox,
 		rebuild = Zone.rebuild,
 		rebuildIfDirty = Zone.rebuildIfDirty,
-
+		
+		bvhRestructureWeight = 1,
 		shapes = {},
 		bvh = Geometry.Bvh.createBVH({}),
 		bvhDirty = true,
@@ -2032,7 +2089,6 @@ local function createShape(part: BasePart | Model): Shape
 			ty = "Wedge",
 			transform = CFrame.identity,
 			size = part.ExtentsSize :: any,
-			vertices = Geometry.Vertices.Wedge(part.ExtentsSize :: any)
 		}
 	elseif part:IsA("Model") then
 		local cframe, size = part:GetBoundingBox()
@@ -2051,8 +2107,6 @@ local function createShape(part: BasePart | Model): Shape
 end
 
 local function shapeInstanceFromPart(part: BasePart | Model): ShapeInstance
-	
-	
 	local shapeInstance = createShapeInstance(createShape(part))
 	if part:IsA("BasePart") then
 		shapeInstance.cframe = part.CFrame
@@ -2065,8 +2119,6 @@ end
 local TrackGroup = {} :: TrackGroup
 
 function TrackGroup:update()
-	
-	
 	local oldImmutable = self.immutable
 
 	self.immutable = {
@@ -2083,9 +2135,6 @@ function TrackGroup:update()
 end
 
 function TrackGroup:removeFrom(listener)
-	
-	
-	
 	local idx = table.find(self.listeners, listener)
 	if idx then
 		table.remove(self.listeners, idx)
@@ -2268,8 +2317,6 @@ function TrackGroup:removeItems(items)
 end
 
 function TrackGroup:clear()
-	
-	
 	self.mutable = {
 		parts = {},
 		models = {},
@@ -2530,6 +2577,28 @@ return table.freeze({
 	},
 	getZonesAtPoint = getZonesAtPoint,
 	
-	visualizeBvh = Geometry.Bvh.visualize,
+	getZoneVisualizer = function(zone: Zone)
+		local visualizer = {
+			update = function(self: ZoneVisualizer, parent: Instance?)
+				self:destroy()
+				local parts = Geometry.Bvh.visualize(zone.bvh)
+				for _, v in parts do
+					v.Parent = parent
+				end
+				self.currentParts = (parts :: {Part}?)
+			end,
+			destroy = function(self: ZoneVisualizer)
+				if self.currentParts then
+					for _, v in self.currentParts do
+						v:Destroy()
+					end
+					self.currentParts = nil
+				end
+			end,
+			currentParts = (nil :: any)::{Part}?
+		}
+		type ZoneVisualizer = typeof(visualizer)
+		return visualizer :: ZoneVisualizer
+	end,
 	geometry = Geometry
 })

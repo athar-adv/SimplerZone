@@ -160,13 +160,50 @@ local function createBVH(boxes: {Box}): (BvhNode)
 	return root
 end
 
-local function needsUpdate(oldCFrame: CFrame, oldSize: vector, newBox: Box, threshold: number)
-	local distance = vector.magnitude((oldCFrame.Position - newBox.cframe.Position)::any)
-	local sizeChange = vector.magnitude(oldSize - newBox.size)
-	return distance > threshold or sizeChange > threshold
+local function getWorldAABB(cf: CFrame, size: vector): (vector, vector)
+	local hx, hy, hz = size.x / 2, size.y / 2, size.z / 2
+	
+	local ax = vector.create(math.abs(cf.RightVector.X), math.abs(cf.RightVector.Y), math.abs(cf.RightVector.Z))
+	local ay = vector.create(math.abs(cf.UpVector.X),    math.abs(cf.UpVector.Y),    math.abs(cf.UpVector.Z))
+	local az = vector.create(math.abs(cf.LookVector.X),  math.abs(cf.LookVector.Y),  math.abs(cf.LookVector.Z))
+
+	local worldHalf = vector.create(
+		ax.x * hx + ay.x * hy + az.x * hz,
+		ax.y * hx + ay.y * hy + az.y * hz,
+		ax.z * hx + ay.z * hy + az.z * hz
+	)
+
+	local pos: vector = cf.Position :: any
+	return pos - worldHalf, pos + worldHalf
 end
 
-local function updateBVHNode(node: BvhNode?, oldBoxes: {Box}, newBoxes: {Box}, threshold: number)
+local function needsUpdate(oldCFrame: CFrame, oldSize: vector, newBox: Box, threshold: number)
+	local distance    = vector.magnitude((oldCFrame.Position - newBox.cframe.Position) :: any)
+	local sizeChange  = vector.magnitude(oldSize - newBox.size)
+	
+	local oldRight: vector = oldCFrame.RightVector :: any
+	local newRight: vector = newBox.cframe.RightVector :: any
+	local rotationChange = vector.magnitude(oldRight - newRight)  -- 0..2 range
+
+	return distance > threshold or sizeChange > threshold or rotationChange > 0.01
+end
+
+local SPLIT_RATIO = 0.001
+
+local function surfaceArea(size: vector): number
+	return 2 * (size.x * size.y + size.y * size.z + size.z * size.x)
+end
+
+local function collectLeaves(node: BvhNode, out: {Box})
+	if node.data then
+		table.insert(out, { cframe = node.cframe, size = node.size, data = node.data })
+	else
+		if node.left then collectLeaves(node.left, out) end
+		if node.right then collectLeaves(node.right, out) end
+	end
+end
+
+local function updateBVHNode(node: BvhNode?, oldBoxes: {Box}, newBoxes: {Box}, threshold: number, splitRatio: number)
 	if not node then return false end
 
 	-- Leaf node
@@ -190,8 +227,8 @@ local function updateBVHNode(node: BvhNode?, oldBoxes: {Box}, newBoxes: {Box}, t
 	end
 
 	-- Internal node
-	local leftUpdated = updateBVHNode(node.left, oldBoxes, newBoxes, threshold)
-	local rightUpdated = updateBVHNode(node.right, oldBoxes, newBoxes, threshold)
+	local leftUpdated = updateBVHNode(node.left, oldBoxes, newBoxes, threshold, splitRatio)
+	local rightUpdated = updateBVHNode(node.right, oldBoxes, newBoxes, threshold, splitRatio)
 
 	-- If either child updated, recalculate bounds
 	if leftUpdated or rightUpdated then
@@ -208,34 +245,52 @@ local function updateBVHNode(node: BvhNode?, oldBoxes: {Box}, newBoxes: {Box}, t
 		}
 
 		if leftBounds and rightBounds then
-			local leftPos: vector = leftBounds.cframe.Position :: any
-			local rightPos: vector = rightBounds.cframe.Position :: any
+			local lMin, lMax = getWorldAABB(leftBounds.cframe, leftBounds.size)
+			local rMin, rMax = getWorldAABB(rightBounds.cframe, rightBounds.size)
 
 			local minBounds = vector.create(
-				math.min(leftPos.x - leftBounds.size.x/2, rightPos.x - rightBounds.size.x/2),
-				math.min(leftPos.y - leftBounds.size.y/2, rightPos.y - rightBounds.size.y/2),
-				math.min(leftPos.z - leftBounds.size.z/2, rightPos.z - rightBounds.size.z/2)
+				math.min(lMin.x, rMin.x),
+				math.min(lMin.y, rMin.y),
+				math.min(lMin.z, rMin.z)
 			)
-
 			local maxBounds = vector.create(
-				math.max(leftPos.x + leftBounds.size.x/2, rightPos.x + rightBounds.size.x/2),
-				math.max(leftPos.y + leftBounds.size.y/2, rightPos.y + rightBounds.size.y/2),
-				math.max(leftPos.z + leftBounds.size.z/2, rightPos.z + rightBounds.size.z/2)
+				math.max(lMax.x, rMax.x),
+				math.max(lMax.y, rMax.y),
+				math.max(lMax.z, rMax.z)
 			)
-			local size = maxBounds - minBounds
-			local center = (minBounds + maxBounds) / 2
 
-			node.cframe = CFrame.new(center::any)
-			node.size = size
-			--node.volume = size.x * size.y * size.z
+			local size   = maxBounds - minBounds
+			local center = (minBounds + maxBounds) / 2
+			node.cframe  = CFrame.new(center :: any)  -- parent AABB has no rotation
+			node.size    = size
 		elseif leftBounds then
-			node.cframe = leftBounds.cframe
-			node.size = leftBounds.size
-			--node.volume = leftBounds.volume
+			local lMin, lMax = getWorldAABB(leftBounds.cframe, leftBounds.size)
+			local size   = lMax - lMin
+			local center = (lMin + lMax) / 2
+			node.cframe  = CFrame.new(center :: any)
+			node.size    = size
 		elseif rightBounds then
-			node.cframe = rightBounds.cframe
-			node.size = rightBounds.size
-			--node.volume = rightBounds.volume
+			local rMin, rMax = getWorldAABB(rightBounds.cframe, rightBounds.size)
+			local size   = rMax - rMin
+			local center = (rMin + rMax) / 2
+			node.cframe  = CFrame.new(center :: any)
+			node.size    = size
+		end
+		
+		local parentSA = surfaceArea(node.size)
+		local leftSA   = node.left  and surfaceArea(node.left.size)  or 0
+		local rightSA  = node.right and surfaceArea(node.right.size) or 0
+
+		if parentSA > splitRatio * (leftSA + rightSA) then
+			local leaves = {}
+			collectLeaves(node, leaves)
+			if #leaves > 1 then
+				local rebuilt = createBVH(leaves)
+				node.cframe = rebuilt.cframe
+				node.size   = rebuilt.size
+				node.left   = rebuilt.left
+				node.right  = rebuilt.right
+			end
 		end
 
 		return true
@@ -244,8 +299,9 @@ local function updateBVHNode(node: BvhNode?, oldBoxes: {Box}, newBoxes: {Box}, t
 	return false
 end
 
-local function updateBVH(bvh: BvhNode, oldBoxes: {Box}, newBoxes: {Box}, threshold: number?)
+local function updateBVH(bvh: BvhNode, oldBoxes: {Box}, newBoxes: {Box}, threshold: number?, splitRatio: number?)
 	local threshold = threshold or 0
+	local splitRatio = splitRatio or SPLIT_RATIO
 
 	if bvh.size == vector.zero and #newBoxes > 0 then
 		local newBVH = createBVH(newBoxes)
@@ -257,28 +313,38 @@ local function updateBVH(bvh: BvhNode, oldBoxes: {Box}, newBoxes: {Box}, thresho
 		return true, bvh
 	end
 
-	local success = updateBVHNode(bvh, oldBoxes, newBoxes, threshold)
+	local success = updateBVHNode(bvh, oldBoxes, newBoxes, threshold, splitRatio)
 	return success, bvh
 end
 
 local function visualize(bvh)
+	local parts = {}
 	traverseBVH(bvh, function(box)
 		local part = Instance.new("Part")
 		part.Anchored = true
-		part.Transparency = 0.9
+		part.Transparency = 1
 		part.CastShadow = false
 		part.CFrame = box.cframe
 		part.Size = box.size :: any
-		part.Parent = workspace
 		part.CanCollide = false
 		part.CanQuery = false
+		part.Locked = true
+		
+		local highlight = Instance.new("SelectionBox")
+		highlight.SurfaceTransparency = 0.8
+		highlight.Adornee = part
+		highlight.LineThickness = 0.2
+		highlight.Color3 = Color3.fromRGB(0, 0, 0)
+		table.insert(parts, part)
 
 		if not box.right and not box.left then
-			part.Color = Color3.fromRGB(255, 0, 0)
+			highlight.Color3 = Color3.fromRGB(255, 0, 0)
 		end
+		highlight.Parent = part
 
 		return true
 	end)
+	return parts
 end
 
 return {
