@@ -128,7 +128,7 @@ serializeShape = function(shape: Shape, level: number): string
 		local s = shape :: WedgeShape
 		table.insert(lines, indent(level + 1) .. "cframe = " .. cf(s.cframe) .. ",")
 		table.insert(lines, indent(level + 1) .. "size = " .. vec(s.size) .. ",")
-		table.insert(lines, indent(level + 1) .. "vertices = " .. serializeValue(s.vertices, level + 1) .. ",")
+		--table.insert(lines, indent(level + 1) .. "vertices = " .. serializeValue(s.vertices, level + 1) .. ",")
 
 	elseif shape.ty == "Group" then
 		local s = shape :: GroupShape
