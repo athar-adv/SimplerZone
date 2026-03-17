@@ -523,7 +523,7 @@ function Zone:rebuild()
 	
 	--self.boxes = boxes
 	--self.bvh = Geometry.Bvh.createBVH(boxes)
-	local updated, newBvh = Geometry.Bvh.updateBVH(self.bvh, self.boxes, boxes, self.bvhRestructureWeight)
+	local updated, newBvh = Geometry.Bvh.updateBVH(self.bvh, self.boxes, boxes, (1/self.bvhRestructureWeight) - 1)
 	if updated then
 		self.bvh = newBvh
 	end
@@ -1984,7 +1984,7 @@ local function createZone(shapeInstances: {ShapeInstance}?, metadata: {[string]:
 		rebuild = Zone.rebuild,
 		rebuildIfDirty = Zone.rebuildIfDirty,
 		
-		bvhRestructureWeight = 1,
+		bvhRestructureWeight = 0.5,
 		shapes = {},
 		bvh = Geometry.Bvh.createBVH({}),
 		bvhDirty = true,
