@@ -82,13 +82,20 @@ export type Zone = {
 	bvhDirty: boolean,
 	metadata: {[string]: any}
 }
+type optionalzoneitems = {
+	parts: {BasePart}?,
+	models: {Model}?,
+	players: {Player}?,
+	attachments: {Attachment}?,
+	pvinstances: {PVInstance}?,
+}
 export type TrackGroup = {
 	update: (TrackGroup) -> (),
 	removeFrom: (TrackGroup, listener: ZoneListener) -> (),
 	addItem: (TrackGroup, item: ZoneItem) -> (),
-	addItems: (TrackGroup, items: ZoneItems) -> (),
+	addItems: (TrackGroup, items: optionalzoneitems) -> (),
 	removeItem: (TrackGroup, item: ZoneItem) -> (),
-	removeItems: (TrackGroup, items: ZoneItems) -> (),
+	removeItems: (TrackGroup, items: optionalzoneitems) -> (),
 	clear: (TrackGroup) -> (),
 	
 	mutable: ZoneItems,
@@ -113,6 +120,7 @@ export type ZoneListenerData = {
 	pvinstanceConnections: {[PVInstance]: {RBXScriptConnection}},
 	modelConnections: {[Model]: {RBXScriptConnection}},
 	playerConnections: {[Player]: {RBXScriptConnection}},
+	itemToZoneAndShape: {[any]: {shape: ShapeInstance, zone: Zone}}
 }
 export type ZoneListener = typeof(setmetatable({}::{
 	onEnter: (ZoneListener, fn: (item: ZoneCallbackItem) -> ()) -> Disconnector,
@@ -131,7 +139,7 @@ export type ZoneListener = typeof(setmetatable({}::{
 	zones: {Zone},
 	itemsInside: ZoneItems,
 
-	iter: (ZoneListener) -> () -> ZoneItem,
+	iter: (ZoneListener) -> () -> ZoneCallbackItem,
 	data: ZoneListenerData
-}, {}::{__iter: (ZoneListener) -> () -> ZoneItem}))
+}, {}::{__iter: (ZoneListener) -> () -> ZoneCallbackItem}))
 return nil
