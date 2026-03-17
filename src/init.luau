@@ -1273,7 +1273,7 @@ local function ZoneListener_checkAndUpdatePart(self: ZoneListener, zone: Zone, p
 				if #data.modelPartsInside[model] == 1 then
 					table.insert(self.itemsInside.models, model)
 					local modelPlayer = Players:GetPlayerFromCharacter(model)
-					local item = {model = model, player = modelPlayer, shape = shape}
+					local item = {model = model, player = modelPlayer, shape = shape, zone = zone}
 					for _, observer in data.enterObservers do
 						noyieldcall(observer, item)
 					end
@@ -1287,14 +1287,14 @@ local function ZoneListener_checkAndUpdatePart(self: ZoneListener, zone: Zone, p
 
 				if #data.playerPartsInside[player] == 1 then
 					table.insert(self.itemsInside.players, player)
-					local item = {player = player, model = player.Character, shape = shape}
+					local item = {player = player, model = player.Character, shape = shape, zone = zone}
 					for _, observer in data.enterObservers do
 						noyieldcall(observer, item)
 					end
 				end
 			end
 		else
-			local item = {part = part, shape = shape}
+			local item = {part = part, shape = shape, zone = zone}
 			for _, observer in data.enterObservers do
 				noyieldcall(observer, item)
 			end
@@ -1316,7 +1316,7 @@ local function ZoneListener_checkAndUpdatePart(self: ZoneListener, zone: Zone, p
 						local modelIndex = table.find(self.itemsInside.models, model)
 						if modelIndex then table.remove(self.itemsInside.models, modelIndex) end
 						local modelPlayer = Players:GetPlayerFromCharacter(model)
-						local item = {model = model, player = modelPlayer, shape = shape}
+						local item = {model = model, player = modelPlayer, shape = shape, zone = zone}
 						for _, observer in data.exitObservers do
 							noyieldcall(observer, item)
 						end
@@ -1332,7 +1332,7 @@ local function ZoneListener_checkAndUpdatePart(self: ZoneListener, zone: Zone, p
 						data.playerPartsInside[player] = nil
 						local playerIndex = table.find(self.itemsInside.players, player)
 						if playerIndex then table.remove(self.itemsInside.players, playerIndex) end
-						local item = {player = player, model = player.Character, shape = shape}
+						local item = {player = player, model = player.Character, shape = shape, zone = zone}
 						for _, observer in data.exitObservers do
 							noyieldcall(observer, item)
 						end
@@ -1340,7 +1340,7 @@ local function ZoneListener_checkAndUpdatePart(self: ZoneListener, zone: Zone, p
 				end
 			end
 		else
-			local item = {part = part, shape = shape}
+			local item = {part = part, shape = shape, zone = zone}
 			for _, observer in data.exitObservers do
 				noyieldcall(observer, item)
 			end
@@ -1375,7 +1375,7 @@ local function ZoneListener_checkAndUpdateAttachment(self: ZoneListener, zone: Z
 	if isInsideAny and not wasInside then
 		table.insert(self.itemsInside.attachments, attachment)
 		data.attachmentsSet[attachment] = true
-		local item = {attachment = attachment, shape = shape}
+		local item = {attachment = attachment, shape = shape, zone = zone}
 		for _, observer in data.enterObservers do
 			noyieldcall(observer, item)
 		end
@@ -1383,7 +1383,7 @@ local function ZoneListener_checkAndUpdateAttachment(self: ZoneListener, zone: Z
 		local index = table.find(self.itemsInside.attachments, attachment)
 		if index then table.remove(self.itemsInside.attachments, index) end
 		data.attachmentsSet[attachment] = nil
-		local item = {attachment = attachment, shape = shape}
+		local item = {attachment = attachment, shape = shape, zone = zone}
 		for _, observer in data.exitObservers do
 			noyieldcall(observer, item)
 		end
@@ -1424,7 +1424,7 @@ local function ZoneListener_checkAndUpdatePVInstance(self: ZoneListener, zone: Z
 	if isInsideAny and not wasInside then
 		table.insert(self.itemsInside.pvinstances, pvi)
 		data.pvinstancesSet[pvi] = true
-		local item = {pvinstance = pvi, shape = shape}
+		local item = {pvinstance = pvi, shape = shape, zone = zone}
 		for _, observer in data.enterObservers do
 			noyieldcall(observer, item)
 		end
@@ -1432,7 +1432,7 @@ local function ZoneListener_checkAndUpdatePVInstance(self: ZoneListener, zone: Z
 		local index = table.find(self.itemsInside.pvinstances, pvi)
 		if index then table.remove(self.itemsInside.pvinstances, index) end
 		data.pvinstancesSet[pvi] = nil
-		local item = {pvinstance = pvi, shape = shape}
+		local item = {pvinstance = pvi, shape = shape, zone = zone}
 		for _, observer in data.exitObservers do
 			noyieldcall(observer, item)
 		end
@@ -1475,7 +1475,7 @@ local function ZoneListener_checkAndUpdateModel(self: ZoneListener, zone: Zone, 
 			data.modelPartsInside[model] = {}
 			table.insert(self.itemsInside.models, model)
 			local modelPlayer = Players:GetPlayerFromCharacter(model)
-			local item = {model = model, player = modelPlayer, shape = shape}
+			local item = {model = model, player = modelPlayer, shape = shape, zone = zone}
 			for _, observer in data.enterObservers do
 				noyieldcall(observer, item)
 			end
@@ -1484,7 +1484,7 @@ local function ZoneListener_checkAndUpdateModel(self: ZoneListener, zone: Zone, 
 			local modelIndex = table.find(self.itemsInside.models, model)
 			if modelIndex then table.remove(self.itemsInside.models, modelIndex) end
 			local modelPlayer = Players:GetPlayerFromCharacter(model)
-			local item = {model = model, player = modelPlayer, shape = shape}
+			local item = {model = model, player = modelPlayer, shape = shape, zone = zone}
 			for _, observer in data.exitObservers do
 				noyieldcall(observer, item)
 			end
@@ -1505,7 +1505,7 @@ local function ZoneListener_checkAndUpdateModel(self: ZoneListener, zone: Zone, 
 			local modelIndex = table.find(self.itemsInside.models, model)
 			if modelIndex then table.remove(self.itemsInside.models, modelIndex) end
 			local modelPlayer = Players:GetPlayerFromCharacter(model)
-			local item = {model = model, player = modelPlayer, shape = shape}
+			local item = {model = model, player = modelPlayer, shape = shape, zone = zone}
 			for _, observer in data.exitObservers do
 				noyieldcall(observer, item)
 			end
@@ -1556,7 +1556,7 @@ local function ZoneListener_checkAndUpdatePlayer(self: ZoneListener, zone: Zone,
 		if isBoxInZoneAny and not wasInside then
 			data.playerPartsInside[player] = {}
 			table.insert(self.itemsInside.players, player)
-			local item = {player = player, model = player.Character, shape = shape}
+			local item = {player = player, model = player.Character, shape = shape, zone = zone}
 			for _, observer in data.enterObservers do
 				noyieldcall(observer, item)
 			end
@@ -1564,7 +1564,7 @@ local function ZoneListener_checkAndUpdatePlayer(self: ZoneListener, zone: Zone,
 			data.playerPartsInside[player] = nil
 			local playerIndex = table.find(self.itemsInside.players, player)
 			if playerIndex then table.remove(self.itemsInside.players, playerIndex) end
-			local item = {player = player, model = player.Character, shape = shape}
+			local item = {player = player, model = player.Character, shape = shape, zone = zone}
 			for _, observer in data.exitObservers do
 				noyieldcall(observer, item)
 			end
@@ -1583,7 +1583,7 @@ local function ZoneListener_checkAndUpdatePlayer(self: ZoneListener, zone: Zone,
 			data.playerPartsInside[player] = nil
 			local playerIndex = table.find(self.itemsInside.players, player)
 			if playerIndex then table.remove(self.itemsInside.players, playerIndex) end
-			local item = {player = player, model = player.Character, shape = shape}
+			local item = {player = player, model = player.Character, shape = shape, zone = zone}
 			for _, observer in data.exitObservers do
 				noyieldcall(observer, item)
 			end
@@ -1768,7 +1768,7 @@ local function createListener(configs: {precision: ("BoundingBox" | "Part")?, qu
 	return listener :: any
 end
 
-local function createZone(shapeInstances: {ShapeInstance}?): Zone
+local function createZone(shapeInstances: {ShapeInstance}?, metadata: {[string]: any}?): Zone
 	local zone = {
 		getRandomPoint = Zone.getRandomPoint,
 		isPointInZone = Zone.isPointInZone,
@@ -1782,6 +1782,7 @@ local function createZone(shapeInstances: {ShapeInstance}?): Zone
 		bvh = Geometry.Bvh.createBVH({}),
 		bvhDirty = true,
 		boxes = {},
+		metadata = metadata or {}
 	}
 	
 	if shapeInstances then

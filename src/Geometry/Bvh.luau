@@ -160,9 +160,9 @@ local function createBVH(boxes: {Box}): (BvhNode)
 	return root
 end
 
-local function needsUpdate(oldBox: Box, newBox: Box, threshold: number)
-	local distance = vector.magnitude((oldBox.cframe.Position - newBox.cframe.Position)::any)
-	local sizeChange = vector.magnitude(oldBox.size - newBox.size)
+local function needsUpdate(oldCFrame: CFrame, oldSize: vector, newBox: Box, threshold: number)
+	local distance = vector.magnitude((oldCFrame.Position - newBox.cframe.Position)::any)
+	local sizeChange = vector.magnitude(oldSize - newBox.size)
 	return distance > threshold or sizeChange > threshold
 end
 
@@ -171,13 +171,6 @@ local function updateBVHNode(node: BvhNode?, oldBoxes: {Box}, newBoxes: {Box}, t
 
 	-- Leaf node
 	if node.data and node.data.shapeInst then
-		local oldBox = {
-			cframe = node.cframe,
-			size = node.size,
-			--volume = node.volume,
-			data = node.data
-		}
-
 		-- Find corresponding new box
 		local newBox
 		for _, box in newBoxes do
@@ -187,7 +180,7 @@ local function updateBVHNode(node: BvhNode?, oldBoxes: {Box}, newBoxes: {Box}, t
 			end
 		end
 		
-		if newBox and needsUpdate(oldBox, newBox, threshold) then
+		if newBox and needsUpdate(node.cframe, node.size, newBox, threshold) then
 			node.cframe = newBox.cframe
 			node.size = newBox.size
 			node.data = newBox.data

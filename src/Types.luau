@@ -81,6 +81,7 @@ export type Zone = {
 	bvh: Geometry.BvhNode,
 	boxes: {Geometry.Box},
 	bvhDirty: boolean,
+	metadata: {[string]: any}
 }
 export type TrackGroup = {
 	update: (TrackGroup) -> (),
@@ -95,7 +96,8 @@ export type TrackGroup = {
 	immutable: ZoneItems,
 	listeners: {ZoneListener}
 }
-type ZoneCallbackItem = ZoneItem & {shape: ShapeInstance?}
+type ZoneCallbackItem = (ZoneItem & {shape: nil, zone: nil}) | (ZoneItem & {shape: ShapeInstance, zone: Zone})
+
 export type ZoneListenerData = {
 	partsSet: {[BasePart]: boolean},
 	attachmentsSet: {[Attachment]: boolean},
