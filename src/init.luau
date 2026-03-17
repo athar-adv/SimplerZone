@@ -480,55 +480,135 @@ function Zone:rebuildIfDirty()
 	self:rebuild()
 end
 
-function Zone:getRandomPoint()
+local function clampBiasToShape(shape: Shape, worldCFrame: CFrame, biasWorld: vector): vector
+	if shape.ty == "Box" then
+		local cframe = worldCFrame * shape.transform
+		local size = shape.size
+		local local_ = cframe:PointToObjectSpace(biasWorld :: any)
+		local clamped = vector.create(
+			math.clamp(local_.X, -size.x/2, size.x/2),
+			math.clamp(local_.Y, -size.y/2, size.y/2),
+			math.clamp(local_.Z, -size.z/2, size.z/2)
+		)
+		return cframe:PointToWorldSpace(clamped :: any) :: any
+	elseif shape.ty == "Wedge" then
+		local cframe = worldCFrame * shape.transform
+		local size = shape.size
+		local sx, sy, sz = size.x, size.y, size.z
+		local local_ = cframe:PointToObjectSpace(biasWorld :: any)
+		-- clamp X and Z first
+		local cx = math.clamp(local_.X, -sx/2, sx/2)
+		local cz = math.clamp(local_.Z, -sz/2, sz/2)
+		-- max Y at this Z (slope rises toward +z)
+		local maxY = sy * (0.5 + cz / sz)
+		local cy = math.clamp(local_.Y, -sy/2, maxY - sy/2)
+		return cframe:PointToWorldSpace(Vector3.new(cx, cy, cz)) :: any
+	elseif shape.ty == "Sphere" then
+		local center = (worldCFrame * CFrame.new(shape.center :: any)).Position
+		local offset = (biasWorld :: any) - center
+		local dist = vector.magnitude(offset)
+		if dist > shape.radius then
+			return center + vector.normalize(offset) * shape.radius :: any
+		end
+		return biasWorld
+	elseif shape.ty == "Cylinder" then
+		local localCF = worldCFrame * shape.transform
+		local height = vector.magnitude(shape.axis)
+		local local_ = localCF:PointToObjectSpace(biasWorld :: any)
+		-- clamp along X (height axis), then clamp radially in Y/Z
+		local cx = math.clamp(local_.X, -height/2, height/2)
+		local yz = Vector2.new(local_.Y, local_.Z)
+		local yzLen = yz.Magnitude
+		local cy, cz
+		if yzLen > shape.radius then
+			local scale = shape.radius / yzLen
+			cy = local_.Y * scale
+			cz = local_.Z * scale
+		else
+			cy = local_.Y
+			cz = local_.Z
+		end
+		return localCF:PointToWorldSpace(Vector3.new(cx, cy, cz)) :: any
+	elseif shape.ty == "Group" then
+		-- clamp to the nearest shape in the group
+		local best, bestDist = biasWorld, math.huge
+		for _, subShape in shape.shapes do
+			local clamped = clampBiasToShape(subShape, worldCFrame * shape.transform, biasWorld)
+			local dist = vector.magnitude((clamped :: any) - (biasWorld :: any))
+			if dist < bestDist then
+				best, bestDist = clamped, dist
+			end
+		end
+		return best
+	end
+
+	return biasWorld
+end
+
+local function getRandomPointInShape(shape: Shape, worldCFrame: CFrame)
+	if shape.ty == "Box" then
+		local cframe, size = worldCFrame * shape.transform, shape.size
+		local randomX = math.random() * size.x - size.x / 2
+		local randomY = math.random() * size.y - size.y / 2
+		local randomZ = math.random() * size.z - size.z / 2
+		local randomPoint = cframe:PointToWorldSpace(vector.create(randomX, randomY, randomZ) :: any)
+		return randomPoint :: any
+	elseif shape.ty == "Wedge" then
+		local rand = Random.new()
+		local cframe = worldCFrame * shape.transform
+		local size = shape.size
+		local sx, sy, sz = size.x, size.y, size.z
+
+		local u = rand:NextNumber()
+		local t = math.sqrt(u)
+		local z = sz * (t - 0.5)
+		local maxY = sy * (0.5 + z / sz)
+
+		local x = (rand:NextNumber() - 0.5) * sx
+		local y = -sy / 2 + rand:NextNumber() * maxY
+		return cframe:PointToWorldSpace(Vector3.new(x, y, z))
+	elseif shape.ty == "Sphere" then
+		local rand = Random.new()
+		local dir = rand:NextUnitVector()
+		local r = rand:NextNumber()^(1/3)
+		local sphereCenter = (worldCFrame * CFrame.new(shape.center :: any)).Position
+		return (sphereCenter :: any) + dir::any * r * shape.radius
+	elseif shape.ty == "Cylinder" then
+		local rand = Random.new()
+		local radius = shape.radius
+		local height = vector.magnitude(shape.axis)
+		local localCF = worldCFrame * shape.transform
+
+		local theta = rand:NextNumber() * math.pi * 2
+		local r = radius * math.sqrt(rand:NextNumber())
+		local y = r * math.cos(theta)
+		local z = r * math.sin(theta)
+
+		local x = (rand:NextNumber() - 0.5) * height
+		local localPoint = Vector3.new(x, y, z)
+		return localCF:PointToWorldSpace(localPoint)
+	elseif shape.ty == "Group" then
+		local shapes = shape.shapes
+		local randomShape = shapes[math.random(1, #shapes)]
+		return getRandomPointInShape(randomShape, worldCFrame * shape.transform)
+	end
+	return vector.zero
+end
+
+function Zone:getRandomPoint(bias)
 	local shapes = self.shapes
 	local shapeInstance = shapes[math.random(1, #shapes)]
 	local shape = shapeInstance.shape
 
-	local function getRandomPointInShape(shape: Shape, worldCFrame: CFrame)
-		if shape.ty == "Box" then
-			local cframe, size = worldCFrame * shape.transform, shape.size
+	local point = getRandomPointInShape(shape, shapeInstance.cframe)
 
-			local randomX = math.random() * size.x - size.x / 2
-			local randomY = math.random() * size.y - size.y / 2
-			local randomZ = math.random() * size.z - size.z / 2
-
-			local randomPoint = cframe:PointToWorldSpace(vector.create(randomX, randomY, randomZ) :: any)
-
-			return randomPoint :: any
-		elseif shape.ty == "Wedge" then
-			return Geometry.getRandomPointInSimplex(RANDOM_POINT_DIMENSION, shape.vertices, worldCFrame * shape.transform)
-		elseif shape.ty == "Sphere" then
-			local rand = Random.new()
-			local dir = rand:NextUnitVector()
-			local r = rand:NextNumber()^(1/3)
-			local sphereCenter = (worldCFrame * CFrame.new(shape.center :: any)).Position
-			return (sphereCenter :: any) + dir::any * r * shape.radius
-		elseif shape.ty == "Cylinder" then
-			local rand = Random.new()
-
-			local radius = shape.radius
-			local height = vector.magnitude(shape.axis)
-			local localCF = worldCFrame * shape.transform
-
-			local theta = rand:NextNumber() * math.pi * 2
-			local r = radius * math.sqrt(rand:NextNumber())
-
-			local x = r * math.cos(theta)
-			local z = r * math.sin(theta)
-
-			local y = (rand:NextNumber() - 0.5) * height
-
-			local localPoint = Vector3.new(x, y, z)
-			return localCF:PointToWorldSpace(localPoint)
-		elseif shape.ty == "Group" then
-			local shapes = shape.shapes
-			local randomShape = shapes[math.random(1, #shapes)]
-			return getRandomPointInShape(randomShape, worldCFrame * shape.transform)
-		end
-		return vector.zero
+	if bias then
+		local clamped = clampBiasToShape(shape, shapeInstance.cframe, bias)
+		local blend = math.random() ^ 2
+		point = point + (clamped - point) * blend
 	end
-	return getRandomPointInShape(shape, shapeInstance.cframe)
+	
+	return point
 end
 
 function Zone:getShapeWithPoint(point)
@@ -1865,7 +1945,6 @@ local function createShape(part: BasePart | Model): Shape
 				ty = "Wedge",
 				transform = CFrame.identity,
 				size = part.ExtentsSize :: any,
-				vertices = Geometry.Vertices.Wedge(part.ExtentsSize :: any)
 			}
 		end
 	elseif part:IsA("MeshPart") then
@@ -1875,7 +1954,6 @@ local function createShape(part: BasePart | Model): Shape
 			ty = "Wedge",
 			transform = CFrame.identity,
 			size = part.ExtentsSize :: any,
-			vertices = Geometry.Vertices.Wedge(part.ExtentsSize :: any)
 		}
 	elseif part:IsA("CornerWedgePart") then
 		return {
@@ -2237,6 +2315,52 @@ end
 return table.freeze({
 	zshape = require("@self/ZShape"),
 	new = createZone,
+	forParts = function(parts: {Instance}, metadata: {[string]: any}?)
+		local shapes = {}
+		for _, v in parts do
+			if not v:IsA("BasePart") then continue end
+			local shape = shapeInstanceFromPart(v)
+			shape:syncWithPart(v)
+		end
+		return createZone(shapes, metadata)
+	end,
+	forTag = function(tag: string, metadata: {[string]: any}?)
+		local shapes = {}
+		for _, v in CollectionService:GetTagged(tag) do
+			if not v:IsA("BasePart") then continue end
+			table.insert(shapes, shapeInstanceFromPart(v))
+		end
+		
+		local zone = createZone(shapes, metadata)
+		local instToShape: {[Instance]: ShapeInstance} = {}
+		
+		local function added(inst: Instance)
+			if not inst:IsA("BasePart") then return end
+			
+			local shape = shapeInstanceFromPart(inst)
+			instToShape[inst] = shape
+			
+			shape:attach(zone)
+			shape:syncWithPart(inst)
+		end
+		
+		local function removed(inst: Instance)
+			if not inst:IsA("BasePart") then return end
+			
+			local shape = instToShape[inst]
+			if not shape then return end
+			
+			shape:detach(zone)
+		end
+		
+		local onAdded = CollectionService:GetInstanceAddedSignal(tag):Connect(added)
+		local onRemoved = CollectionService:GetInstanceRemovedSignal(tag):Connect(removed)
+		
+		return zone, function()
+			onAdded:Disconnect()
+			onRemoved:Disconnect()
+		end
+	end,
 	shape = {
 		new = (function(ty: "Box" | "Cylinder" | "Wedge" | "Sphere" | "Group" | "Mesh", a: any, b: any, c: any): Shape
 			if ty == "Box" then
@@ -2265,7 +2389,6 @@ return table.freeze({
 					ty = "Wedge",
 					transform = a or CFrame.identity,
 					size = b or vector.zero,
-					vertices = Geometry.Vertices.Wedge(b or vector.zero)
 				}
 			elseif ty == "Group" then
 				return {
@@ -2290,7 +2413,7 @@ return table.freeze({
 	},
 	shapeInstance = {
 		new = createShapeInstance,
-		fromPart = shapeInstanceFromPart
+		fromPart = shapeInstanceFromPart,
 	},
 	listener = {
 		new = createListener,

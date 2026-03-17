@@ -22,7 +22,6 @@ export type WedgeShape = {
 	ty: "Wedge",
 	transform: CFrame,
 	size: vector,
-	vertices: {vector}
 }
 export type GroupShape = {
 	ty: "Group",
@@ -66,7 +65,7 @@ export type ShapeInstance = {
 	metadata: {[string]: any}
 }
 export type Zone = {
-	getRandomPoint: (Zone) -> vector,
+	getRandomPoint: (Zone, bias: vector?) -> vector,
 	
 	getShapeWithPoint: (Zone, point: vector) -> ShapeInstance?,
 	getShapeWithBox: (Zone, cframe: CFrame, size: vector) -> ShapeInstance?,
