@@ -57,7 +57,7 @@ export type ShapeInstance = {
 	attach: (ShapeInstance, zone: Zone) -> (),
 	detach: (ShapeInstance, zone: Zone) -> (),
 	detachAll: (ShapeInstance) -> (),
-	
+
 	cframe: CFrame,
 	scale: vector,
 	zones: {Zone},
@@ -66,18 +66,18 @@ export type ShapeInstance = {
 }
 export type Zone = {
 	getRandomPoint: (Zone, bias: vector?) -> vector,
-	
+
 	getShapeWithPoint: (Zone, point: vector) -> ShapeInstance?,
 	getShapeWithBox: (Zone, cframe: CFrame, size: vector) -> ShapeInstance?,
-	
+
 	isPointInZone: (Zone, point: vector) -> boolean,
 	isBoxInZone: (Zone, cframe: CFrame, size: vector) -> boolean,
-	
+
 	rebuild: (Zone) -> (),
 	rebuildIfDirty: (Zone) -> (),
-	
+
 	bvhRestructureWeight: number,
-	
+
 	shapes: {ShapeInstance},
 	bvh: Geometry.BvhNode,
 	boxes: {Geometry.Box},
@@ -99,7 +99,7 @@ export type TrackGroup = {
 	removeItem: (TrackGroup, item: ZoneItem) -> (),
 	removeItems: (TrackGroup, items: optionalzoneitems) -> (),
 	clear: (TrackGroup) -> (),
-	
+
 	mutable: ZoneItems,
 	immutable: ZoneItems,
 	listeners: {ZoneListener}
@@ -116,6 +116,9 @@ export type ZoneListenerData = {
 	playerPartsInside: {[Player]: {BasePart}},
 	enterObservers: {(ZoneCallbackItem) -> ()},
 	exitObservers: {(ZoneCallbackItem) -> ()},
+	-- Keyed by TrackGroup; each list is fired when an item from that group enters/exits.
+	groupEnterObservers: {[any]: {(ZoneCallbackItem) -> ()}},
+	groupExitObservers:  {[any]: {(ZoneCallbackItem) -> ()}},
 	stopped: boolean,
 	partConnections: {[BasePart]: {RBXScriptConnection}},
 	attachmentConnections: {[Attachment]: {RBXScriptConnection}},
@@ -128,13 +131,17 @@ export type ZoneListener = typeof(setmetatable({}::{
 	onEnter: (ZoneListener, fn: (item: ZoneCallbackItem) -> ()) -> Disconnector,
 	onExit: (ZoneListener, fn: (item: ZoneCallbackItem) -> ()) -> Disconnector,
 	observe: (ZoneListener, fn: (item: ZoneCallbackItem) -> (() -> ())?) -> Disconnector,
+	
+	observeGroups: (ZoneListener, groups: {TrackGroup}, fn: (item: ZoneCallbackItem) -> (() -> ())?) -> Disconnector,
+	onGroupItemsEnter: (ZoneListener, groups: {TrackGroup}, fn: (item: ZoneCallbackItem) -> ()) -> Disconnector,
+	onGroupItemsExit:  (ZoneListener, groups: {TrackGroup}, fn: (item: ZoneCallbackItem) -> ()) -> Disconnector,
 
 	setGroups: (ZoneListener, groups: {TrackGroup}) -> (),
-	
+
 	subscribe: (ZoneListener, zone: Zone) -> (),
 	unsubscribe: (ZoneListener, zone: Zone) -> (),
 	unsubscribeAll: (ZoneListener) -> (),
-	
+
 	precision: "Part" | "BoundingBox",
 	queryShape: "Point" | "Box",
 	groups: {TrackGroup},
