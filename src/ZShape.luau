@@ -1,7 +1,7 @@
 --!strict
 
 local Types = require("./Types")
-type Shape = Types.Shape
+type FiniteShape = Types.FiniteShape
 type BoxShape = Types.BoxShape
 type CylinderShape = Types.CylinderShape
 type SphereShape = Types.SphereShape
@@ -81,7 +81,7 @@ serializeValue = function(value: any, level: number): string
 	elseif t == "table" then
 		-- IMPORTANT: detect shape tables
 		if value.ty ~= nil then
-			return serializeShape(value :: Shape, level)
+			return serializeShape(value :: FiniteShape, level)
 		end
 
 		-- array fallback
@@ -98,7 +98,7 @@ serializeValue = function(value: any, level: number): string
 	end
 end
 
-serializeShape = function(shape: Shape, level: number): string
+serializeShape = function(shape: FiniteShape, level: number): string
 	local lines = {}
 	table.insert(lines, "{")
 
@@ -107,7 +107,7 @@ serializeShape = function(shape: Shape, level: number): string
 
 	if shape.ty == "Box" then
 		local s = shape :: BoxShape
-		table.insert(lines, indent(level + 1) .. "cframe = " .. cf(s.cframe) .. ",")
+		table.insert(lines, indent(level + 1) .. "cframe = " .. cf(s.transform) .. ",")
 		table.insert(lines, indent(level + 1) .. "size = " .. vec(s.size) .. ",")
 
 	elseif shape.ty == "Cylinder" then
@@ -115,7 +115,7 @@ serializeShape = function(shape: Shape, level: number): string
 		table.insert(lines, indent(level + 1) .. "center = " .. vec(s.center) .. ",")
 		table.insert(lines, indent(level + 1) .. "axis = " .. vec(s.axis) .. ",")
 		table.insert(lines, indent(level + 1) .. "radius = " .. num(s.radius) .. ",")
-		table.insert(lines, indent(level + 1) .. "cframe = " .. cf(s.cframe) .. ",")
+		table.insert(lines, indent(level + 1) .. "cframe = " .. cf(s.transform) .. ",")
 		table.insert(lines, indent(level + 1) .. "size = " .. vec(s.size) .. ",")
 
 	elseif shape.ty == "Sphere" then
@@ -126,13 +126,13 @@ serializeShape = function(shape: Shape, level: number): string
 
 	elseif shape.ty == "Wedge" then
 		local s = shape :: WedgeShape
-		table.insert(lines, indent(level + 1) .. "cframe = " .. cf(s.cframe) .. ",")
+		table.insert(lines, indent(level + 1) .. "cframe = " .. cf(s.transform) .. ",")
 		table.insert(lines, indent(level + 1) .. "size = " .. vec(s.size) .. ",")
 		--table.insert(lines, indent(level + 1) .. "vertices = " .. serializeValue(s.vertices, level + 1) .. ",")
 
 	elseif shape.ty == "Group" then
 		local s = shape :: GroupShape
-		table.insert(lines, indent(level + 1) .. "cframe = " .. cf(s.cframe) .. ",")
+		table.insert(lines, indent(level + 1) .. "cframe = " .. cf(s.transform) .. ",")
 		table.insert(lines, indent(level + 1) .. "shapes = {")
 		for _, child in ipairs(s.shapes) do
 			table.insert(lines, indent(level + 2) .. serializeShape(child, level + 2) .. ",")
@@ -141,7 +141,7 @@ serializeShape = function(shape: Shape, level: number): string
 
 	elseif shape.ty == "Mesh" then
 		local s = shape :: MeshShape
-		table.insert(lines, indent(level + 1) .. "cframe = " .. cf(s.cframe) .. ",")
+		table.insert(lines, indent(level + 1) .. "cframe = " .. cf(s.transform) .. ",")
 		table.insert(lines, indent(level + 1) .. "size = " .. vec(s.size) .. ",")
 		table.insert(lines, indent(level + 1) .. "mesh = " .. meshToCode(s.mesh, level + 1) .. ",")
 
@@ -153,7 +153,7 @@ serializeShape = function(shape: Shape, level: number): string
 	return table.concat(lines, "\n")
 end
 
-function Serializer.serialize(shape: Shape): string
+function Serializer.serialize(shape: FiniteShape): string
 	return "-- Generated ZShape\nreturn " .. serializeShape(shape, 0)
 end
 

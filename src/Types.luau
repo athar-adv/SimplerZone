@@ -25,7 +25,7 @@ export type WedgeShape = {
 }
 export type GroupShape = {
 	ty: "Group",
-	shapes: {Shape},
+	shapes: {FiniteShape},
 	transform: CFrame,
 }
 export type MeshShape = {
@@ -34,7 +34,22 @@ export type MeshShape = {
 	size: vector,
 	mesh: MeshPart,
 }
-export type Shape = BoxShape | CylinderShape | SphereShape | WedgeShape | GroupShape | MeshShape
+export type BoundsShape = {
+	ty: "Bounds",
+	transform: CFrame,
+
+	min: Vector3,
+	max: Vector3,
+}
+export type CapsuleShape = {
+	ty: "Capsule",
+	transform: CFrame,
+	size: vector,
+}
+export type InfiniteShape = BoundsShape
+export type FiniteShape = BoxShape | CylinderShape | SphereShape | WedgeShape | GroupShape | MeshShape | CapsuleShape
+export type Shape = InfiniteShape | FiniteShape
+
 export type Disconnector = () -> ()
 export type ZoneItems = {
 	parts: {BasePart},
@@ -75,11 +90,14 @@ export type Zone = {
 
 	rebuild: (Zone) -> (),
 	rebuildIfDirty: (Zone) -> (),
+	
+	cleanup: (Zone) -> (),
 
 	bvhRestructureWeight: number,
 
 	shapes: {ShapeInstance},
 	bvh: Geometry.BvhNode,
+	listeners: {ZoneListener},
 	boxes: {Geometry.Box},
 	bvhDirty: boolean,
 	metadata: {[string]: any}
@@ -141,6 +159,8 @@ export type ZoneListener = typeof(setmetatable({}::{
 	subscribe: (ZoneListener, zone: Zone) -> (),
 	unsubscribe: (ZoneListener, zone: Zone) -> (),
 	unsubscribeAll: (ZoneListener) -> (),
+	
+	cleanup: (ZoneListener) -> (),
 
 	precision: "Part" | "BoundingBox",
 	queryShape: "Point" | "Box",

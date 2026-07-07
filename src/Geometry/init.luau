@@ -1,5 +1,4 @@
 --!native
---!optimize 2
 
 --[[
 	Cool geometry helper module :)

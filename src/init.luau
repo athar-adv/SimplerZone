@@ -17,6 +17,8 @@ export type ShapeInstance = Types.ShapeInstance
 export type Zone = Types.Zone
 export type ZoneListener = Types.ZoneListener
 export type TrackGroup = Types.TrackGroup
+export type FiniteShape = Types.FiniteShape
+export type InfiniteShape = Types.InfiniteShape
 export type Shape = Types.Shape
 
 export type BoxShape = Types.BoxShape
@@ -25,6 +27,7 @@ export type SphereShape = Types.SphereShape
 export type WedgeShape = Types.WedgeShape
 export type GroupShape = Types.GroupShape
 export type MeshShape = Types.MeshShape
+export type BoundsShape = Types.BoundsShape
 
 type ZoneItems = Types.ZoneItems
 type ZoneItem = Types.ZoneItem
@@ -80,6 +83,7 @@ local function MESH_isBoxInShape(shape: Shape, worldCFrame: CFrame, boxCf: CFram
 	return MESH_isPointInShape(shape, worldCFrame, boxCf.Position :: any)
 end
 
+@native
 local function getShapeTransform(shape: Shape)
 	if shape.ty == "Box" or shape.ty == "Cylinder" or shape.ty == "Mesh" or shape.ty == "Group" or shape.ty == "Wedge" then
 		return shape.transform
@@ -89,6 +93,7 @@ local function getShapeTransform(shape: Shape)
 	error("exhaustive")
 end
 
+@native
 local function getWorldAABB(cf: CFrame, size: vector): (vector, vector)
 	local hx, hy, hz = size.x / 2, size.y / 2, size.z / 2
 	local ax = vector.create(math.abs(cf.RightVector.X), math.abs(cf.RightVector.Y), math.abs(cf.RightVector.Z))
@@ -103,6 +108,7 @@ local function getWorldAABB(cf: CFrame, size: vector): (vector, vector)
 	return pos - worldHalf, pos + worldHalf
 end
 
+@native
 local function toAABB(cf: CFrame, size: vector): (CFrame, vector)
 	local min, max = getWorldAABB(cf, size)
 	local aabbSize = max - min
@@ -110,6 +116,7 @@ local function toAABB(cf: CFrame, size: vector): (CFrame, vector)
 	return CFrame.new(aabbCenter :: any), aabbSize
 end
 
+@native
 local function pointInAABB(point: vector, boxCFrame: CFrame, boxSize: vector): boolean
 	local local_point: vector = boxCFrame:PointToObjectSpace(point :: any) :: any
 	local h = boxSize / 2
@@ -118,6 +125,7 @@ local function pointInAABB(point: vector, boxCFrame: CFrame, boxSize: vector): b
 		and math.abs(local_point.z) <= h.z
 end
 
+@native
 local function obbInAABB(obbCFrame: CFrame, obbSize: vector, aabbCFrame: CFrame, aabbSize: vector): boolean
 	local min, max = getWorldAABB(obbCFrame, obbSize)
 	local obbAABBCenter = (min + max) / 2
@@ -130,6 +138,7 @@ local function obbInAABB(obbCFrame: CFrame, obbSize: vector, aabbCFrame: CFrame,
 		and math.abs(obbAABBCenter.z - aabbPos.z) <= ah.z + oh.z
 end
 
+@native
 local function flattenShapeToBoxes(shape: Shape, worldCFrame: CFrame, shapeInst: ShapeInstance): {Geometry.Box}
 	local boxes: {Geometry.Box} = {}
 	if shape.ty == "Box" then
@@ -161,6 +170,7 @@ local function flattenShapeToBoxes(shape: Shape, worldCFrame: CFrame, shapeInst:
 	return boxes
 end
 
+@native
 local function isBoxInShape(partCFrame: CFrame, partSize: vector, shape: Shape, worldCFrame: CFrame): boolean
 	if shape.ty == "Box" then
 		return Geometry.doBoxesIntersect(partCFrame, partSize, worldCFrame * shape.transform, shape.size)
@@ -193,6 +203,7 @@ local function isBoxInShape(partCFrame: CFrame, partSize: vector, shape: Shape, 
 	return false
 end
 
+@native
 local function isPointInShapeVolume(point: vector, shape: Shape, worldCFrame: CFrame, shapeInst: ShapeInstance): boolean
 	if shape.ty == "Box" then
 		local cf = worldCFrame * shape.transform
@@ -278,6 +289,7 @@ local function isPointInShapeVolume(point: vector, shape: Shape, worldCFrame: CF
 	return false
 end
 
+@native
 local function checkPointInGroup(point: vector, bvh): ShapeInstance?
 	if not bvh then return nil end
 
@@ -302,7 +314,8 @@ local function checkPointInGroup(point: vector, bvh): ShapeInstance?
 	return foundShape
 end
 
-local function checkBoxInGroup(cframe: CFrame, size: vector, bvh): ShapeInstance?
+@native
+local function checkBoxInGroup(cframe: CFrame, size: vector, bvh: Geometry.BvhNode?): ShapeInstance?
 	if not bvh then return nil end
 
 	local foundShape = nil :: ShapeInstance?
@@ -326,7 +339,7 @@ local function checkBoxInGroup(cframe: CFrame, size: vector, bvh): ShapeInstance
 	return foundShape
 end
 
-local function checkPartInGroup(part: BasePart, bvh): ShapeInstance?
+local function checkPartInGroup(part: BasePart, bvh: Geometry.BvhNode?): ShapeInstance?
 	return checkBoxInGroup(part.CFrame, part.Size :: any, bvh)
 end
 
@@ -422,7 +435,8 @@ function ShapeInstance:toParts(overrideCFrame: CFrame?)
 	return toPart(shape, overrideCFrame)
 end
 
-local function getScale(shape: Types.Shape, targetSize: vector): vector
+@native
+local function getScale(shape: Shape, targetSize: vector): vector
 	if shape.ty == "Sphere" then
 		local d = shape.radius * 2
 		local scale = targetSize.x / d
@@ -566,6 +580,7 @@ function Zone:rebuildIfDirty()
 	self:rebuild()
 end
 
+@native
 local function clampBiasToShape(shape: Shape, worldCFrame: CFrame, biasWorld: vector): vector
 	if shape.ty == "Box" then
 		local cframe = worldCFrame * shape.transform
@@ -697,6 +712,13 @@ function Zone:getRandomPoint(bias)
 	return point
 end
 
+function Zone:cleanup()
+	for _, listener in self.listeners do
+		listener:cleanup()
+	end
+	table.clear(self.listeners)
+end
+
 function Zone:getShapeWithPoint(point)
 	self:rebuildIfDirty()
 	return checkPointInGroup(point, self.bvh)
@@ -715,8 +737,8 @@ function Zone:isBoxInZone(cframe, size)
 	return self:getShapeWithBox(cframe, size) ~= nil
 end
 
-local function getPartsFromModel(model: Model): {BasePart}
-	return model:QueryDescendants("BasePart") :: any
+local function getPartsFromContainer(container: Instance): {BasePart}
+	return container:QueryDescendants(">> BasePart") :: any
 end
 
 local function getAttachmentWorldPosition(attachment: Attachment): vector
@@ -964,7 +986,7 @@ local function ZoneListener_setupModelTracking(self: ZoneListener, model: Model)
 	if data.modelConnections[model] then return end
 
 	if precision == "Part" then
-		for _, part in getPartsFromModel(model) do
+		for _, part in getPartsFromContainer(model) do
 			ZoneListener_setupPartTracking(self, part, model)
 		end
 	else
@@ -1044,7 +1066,7 @@ local function ZoneListener_setupPlayerTracking(self: ZoneListener, player: Play
 
 	local function setupCharacter(character: Model)
 		if precision == "Part" then
-			for _, part in getPartsFromModel(character) do
+			for _, part in getPartsFromContainer(character) do
 				ZoneListener_setupPartTracking(self, part, player)
 			end
 			character.DescendantAdded:Connect(function(descendant)
@@ -1886,7 +1908,7 @@ local function ZoneListener_checkAndUpdateModel(self: ZoneListener, zone: Zone, 
 		return
 	end
 
-	local parts = getPartsFromModel(model)
+	local parts = getPartsFromContainer(model)
 	for _, part in parts do
 		ZoneListener_checkAndUpdatePart(self, zone, part, model)
 	end
@@ -1976,7 +1998,7 @@ local function ZoneListener_checkAndUpdatePlayer(self: ZoneListener, zone: Zone,
 		return
 	end
 
-	local parts = getPartsFromModel(character)
+	local parts = getPartsFromContainer(character)
 	for _, part in parts do
 		ZoneListener_checkAndUpdatePart(self, zone, part, player)
 	end
@@ -1986,6 +2008,7 @@ function ZoneListener:subscribe(zone: Zone)
 	if table.find(self.zones, zone) then return end
 
 	table.insert(self.zones, zone)
+	table.insert(zone.listeners, self)
 
 	local scheduler = ZoneScheduler.getGlobal()
 	if not table.find(scheduler.listeners, self) then
@@ -2016,17 +2039,32 @@ end
 
 function ZoneListener:unsubscribe(zone)
 	local index = table.find(self.zones, zone)
-	if not index then return end
-
-	table.remove(self.zones, index)
-
-	if #self.zones == 0 then
-		ZoneListener_cleanupAllTracking(self)
+	local self_index = table.find(zone.listeners, self)
+	if index then
+		table.remove(self.zones, index)
 	end
+	if self_index then
+		table.remove(zone.listeners, self_index)
+	end
+	
+	--if #self.zones == 0 then
+	--	ZoneListener_cleanupAllTracking(self)
+	--end
 end
 
 function ZoneListener:unsubscribeAll()
+	for _, zone in self.zones do
+		local self_index = table.find(zone.listeners, self)
+		if self_index then
+			table.remove(zone.listeners, self_index)
+		end
+	end
 	table.clear(self.zones)
+	--ZoneListener_cleanupAllTracking(self)
+end
+
+function ZoneListener:cleanup()
+	self:unsubscribeAll()
 	ZoneListener_cleanupAllTracking(self)
 end
 
@@ -2144,6 +2182,7 @@ local function createListener(configs: {precision: ("BoundingBox" | "Part")?, qu
 		unsubscribe = ZoneListener.unsubscribe,
 		unsubscribeAll = ZoneListener.unsubscribeAll,
 		setGroups = ZoneListener.setGroups,
+		cleanup = ZoneListener.cleanup,
 		iter = ZoneListener__iter,
 
 		groups = {},
@@ -2199,9 +2238,11 @@ local function createZone(shapeInstances: {ShapeInstance}?, metadata: {[string]:
 		getShapeWithBox = Zone.getShapeWithBox,
 		rebuild = Zone.rebuild,
 		rebuildIfDirty = Zone.rebuildIfDirty,
+		cleanup = Zone.cleanup,
 
 		bvhRestructureWeight = 0.5,
 		shapes = {},
+		listeners = {},
 		bvh = Geometry.Bvh.createBVH({}),
 		bvhDirty = true,
 		boxes = {},
@@ -2677,18 +2718,23 @@ local defaultGroups = {} do
 	end
 end
 
+local function Zone_fromParts(parts: {Instance}, metadata: {[string]: any}?)
+	local shapes = {}
+	for _, v in parts do
+		if not v:IsA("BasePart") then continue end
+		local shape = shapeInstanceFromPart(v)
+		shape:syncWithPart(v)
+		table.insert(shapes, shape)
+	end
+	return createZone(shapes, metadata)
+end
+
 return table.freeze({
 	zshape = require("@self/ZShape"),
 	new = createZone,
-	forParts = function(parts: {Instance}, metadata: {[string]: any}?)
-		local shapes = {}
-		for _, v in parts do
-			if not v:IsA("BasePart") then continue end
-			local shape = shapeInstanceFromPart(v)
-			shape:syncWithPart(v)
-			table.insert(shapes, shape)
-		end
-		return createZone(shapes, metadata)
+	forParts = Zone_fromParts,
+	forContainer = function(container: Instance, metadata: {[string]: any}?)
+		return Zone_fromParts(getPartsFromContainer(container) :: {any}, metadata)
 	end,
 	forTag = function(tag: string, metadata: {[string]: any}?)
 		local shapes = {}
